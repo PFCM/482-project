@@ -8,17 +8,18 @@ from six.moves import xrange
 import time
 import logging
 
-import numpy as np
+from deco import concurrent, synchronized
 
+import numpy as np
 
 
 class UCTNode(object):
     """The nodes for our tree"""
 
     def __init__(self, state, parent, action):
-        """Make a new node. If parent is not None, appends self to 
+        """Make a new node. If parent is not None, appends self to
         parent's list of children.
-        
+
         Args:
           state: whatever we are using for the state.
           parent: another node or None for the root.
@@ -48,10 +49,11 @@ def negamax_backup(node, reward, **kwargs):
         node = node.parent
 
 
+# TODO these guys will have to be classes if we want to use deco
 def maxdepth_tree_policy(max_depth, choice_func):
     """Returns a tree policy which expands from the given node
     using the supplied function until a maximum depth is reached.
-    
+
     Args:
       depth: the max depth we will consider.
       choice_func: how to choose children if the node is fully
@@ -67,7 +69,7 @@ def maxdepth_tree_policy(max_depth, choice_func):
         return node
 
     return _treepolicy
-        
+
 
 def uniform_rollout(start_node, game_descr):
     """Does rollout with uniform probabilities. Returns reward
@@ -83,12 +85,13 @@ def uniform_rollout(start_node, game_descr):
 
 
 def choose_ucb1(constant):
-    """gets a function which chooses a child node according to 
+    """gets a function which chooses a child node according to
     ucb 1 with given constant"""
 
     def _ucb1(node):
+        # TODO: make this tidier and more robust
         best_val = 0
-        best_child = None
+        best_child = node.children[0]
         for child in node.children:
             val = (node.Q / child.count) + constant * np.sqrt(2 * np.log(node.count)/child.count)
             if val > best_val:  # or maybe child.count is 0?
@@ -96,18 +99,21 @@ def choose_ucb1(constant):
                 best_child = child
         return best_child
     return _ucb1
-    
+
+
 def uniform_expand(node, game_descr):
     """adds a child to node by sampling uniformly at random from available moves"""
-    moves = game_descr.legal_actions(node.state)
+    legal_moves = game_descr.legal_actions(node.state)
     # get the set of actions we haven't tried
+    # somehow we are getting illegal moves here
     done = [child.action for child in node.children]
-    moves = [move for move in moves if move not in done]
+    moves = [move for move in legal_moves if move not in done]
+    # print('{}/{} moves'.format(len(moves), len(legal_moves)))
     action = np.random.choice(moves)
     # got action
     child = UCTNode(game_descr.transition_function(node.state, action),
                     node, action)
-    
+
     return child
 
 
@@ -134,13 +140,38 @@ class GameDescription(object):
         self.legal_actions = legal_actions
 
 
+# this is not going to be a great plan, because of many reasons.
+# notably, it should do a couple or they won't take long enough for much
+# benefit. Also it freaks out because it can't pickle the functions in the
+# game description
+@concurrent
+def _single_search(obj, index, root, results):
+    rollout_start = obj.tree_policy(
+        root, obj.expand, obj.descr)
+    reward = obj.default_policy(rollout_start,
+                                obj.descr)
+    results[index] = (rollout_start, reward)
+
+
+@synchronized
+def _batch(obj, root, batch_size=16):
+    """Does batch_size concurrent searches.
+    Backs them up serially.
+    """
+    backups = {}
+    for index in range(batch_size):
+        _single_search(obj, index, root, backups)
+    for index, result in backups.items():
+        obj.backup(*result)
+
+
 class UCTSearch(object):
     """UCT search :)"""
 
     def __init__(self, descr,
-                 tree_policy=maxdepth_tree_policy(10, choose_ucb1(.1)),
+                 tree_policy=maxdepth_tree_policy(3, choose_ucb1(.7)),
                  expand=uniform_expand, default_policy=uniform_rollout,
-                 best_child=choose_ucb1(.1), backup=negamax_backup):
+                 best_child=choose_ucb1(0), backup=negamax_backup):
         """Initialise the search object.
 
         Args:
@@ -174,13 +205,13 @@ class UCTSearch(object):
         Args:
           state: the state
           length: how long to try it out.
-        
+
         Return:
           an action to take
         """
         start = time.time()
         root = UCTNode(state, None, None)
-        logging.info('starting rollouts (%f seconds)', length)
+        logging.info('starting rollouts (%d seconds)', length)
         rollouts = 0
         while time.time() < (start + length):
             # this is where we could be parallel
@@ -190,6 +221,10 @@ class UCTSearch(object):
             reward = self.default_policy(rollout_start,
                                          self.descr)
             self.backup(rollout_start, reward)
+            if root is None:
+                print('root is none?')
+                raise ValueError
+            # _batch(self, root, batch_size=16)
             rollouts += 1
             print('\r{} rollouts'.format(rollouts), end='')
         print()
@@ -197,4 +232,3 @@ class UCTSearch(object):
         action = self.best_child(root).action
         logging.info('Got action in %f seconds.', time.time() - start)
         return action
-

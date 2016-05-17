@@ -1,5 +1,6 @@
 """use uct on 9x9 go"""
 import time
+import logging
 
 import gym
 import pachi_py
@@ -19,8 +20,8 @@ def coord_to_action(board, c):
 def make_description(env):
     """make a uct.GameDescription describing this environment. Kind of hacky
     and a bit cheating?"""
-    #state = env._state
     colour = env.player_color
+
     def _reward(state):
         if state.board.is_terminal:
             white_wins = state.board.official_score
@@ -45,10 +46,12 @@ def make_description(env):
                                _terminal,
                                _actions)
 
+
 def main():
+    logging.getLogger().setLevel(logging.INFO)
     env = gym.make('Go9x9-v0')
     obs = env.reset()
-    
+
     descr = make_description(env)
     mcts = uct.UCTSearch(descr)
 
@@ -56,15 +59,14 @@ def main():
     state = env._state
     while not done:
         env.render()
-        
-        action = mcts.search(state, 10)
+
+        action = mcts.search(state, 1)
 
         obs, reward, done, info = env.step(action)
         state = info['state']
-        time.sleep(10)
 
     print('got reward {}'.format(reward))
-    
+
 
 if __name__ == '__main__':
     main()
