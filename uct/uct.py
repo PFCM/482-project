@@ -35,7 +35,7 @@ class UCTNode(object):
             parent.children.append(self)
 
 
-def negamax_backup(node, reward, **kwargs):
+def negamax_backup(node, reward, runs=1, **kwargs):
     """negamax backup -- for two player zero sum games.
     Args:
       node: a UCTNode to back up from.
@@ -43,7 +43,7 @@ def negamax_backup(node, reward, **kwargs):
       **kwargs: not used.
     """
     while node is not None:
-        node.count += 1
+        node.count += runs
         node.Q += reward
         reward *= -1
         node = node.parent
@@ -116,8 +116,12 @@ def uniform_expand(node, game_descr):
     # print('{}/{} moves'.format(len(moves), len(legal_moves)))
     action = np.random.choice(moves)
     # got action
-    child = UCTNode(game_descr.transition_function(node.state, action),
-                    node, action)
+    try:
+        child = UCTNode(game_descr.transition_function(node.state, action),
+                        node, action)
+    except:
+        #print('illegal move in expand')
+        child = node
 
     return child
 
@@ -144,19 +148,16 @@ class GameDescription(object):
         self.terminal_predicate = terminal_predicate
         self.legal_actions = legal_actions
 
-
-# this is not going to be a great plan, because of many reasons.
-# notably, it should do a couple or they won't take long enough for much
-# benefit. Also it freaks out because it can't pickle the functions in the
-# game description
 @concurrent
-def _single_search(obj, index, root, results):
+def _single_search(obj, rollout_start, num=16):
+    #logging.info('%d rolling out', index)
     start = time.time()
-    rollout_start = obj.tree_policy(
-        root, obj.expand, obj.descr)
-    reward = obj.default_policy(rollout_start,
-                                obj.descr)
-    results[index] = (rollout_start, reward, time.time()-start)
+    reward, runs = 0, 0
+    for i in range(num):
+        reward += obj.default_policy(rollout_start,
+                                     obj.descr)
+        runs += 1
+    return (reward, runs, time.time()-start)
 
 
 @synchronized
@@ -166,19 +167,24 @@ def _batch(obj, root, batch_size=16):
     """
     backups = {}
     for index in range(batch_size):
-        _single_search(obj, index, root, backups)
+        rollout_start = obj.tree_policy(
+            root, obj.expand, obj.descr)
+        #logging.info('Started %d', index)
+        backups[index] = _single_search(obj, rollout_start)
     total_time = 0
     for index, result in backups.items():
-        obj.backup(*result[:-1])
-        total_time += result[-1]
-    return total_time / batch_size
+        #logging.info('got results for %d', index)
+        reward, runs, time = result
+        obj.backup(node, reward, runs)
+        total_time += time
+    return total_time / batch_size / 16
 
 
 class UCTSearch(object):
     """UCT search :)"""
 
     def __init__(self, descr,
-                 tree_policy=maxdepth_tree_policy(3, choose_ucb1(.7)),
+                 tree_policy=maxdepth_tree_policy(25, choose_ucb1(.7)),
                  expand=uniform_expand, default_policy=uniform_rollout,
                  best_child=choose_ucb1(0), backup=negamax_backup):
         """Initialise the search object.
@@ -224,18 +230,19 @@ class UCTSearch(object):
         rollouts = 0
         while time.time() < (start + length):
             # this is where we could be parallel
-            # rollout_start = self.tree_policy(root,
-            #                                 self.expand,
-            #                                 self.descr)
-            # reward = self.default_policy(rollout_start,
-            #                             self.descr)
-            # self.backup(rollout_start, reward)
+            rollout_start = self.tree_policy(root,
+                                             self.expand,
+                                             self.descr)
+            reward = self.default_policy(rollout_start,
+                                         self.descr)
+            self.backup(rollout_start, reward)
         
-            av_time = _batch(self, root, batch_size=16)
-            rollouts += 16
-            print('\r{} rollouts {}s each'.format(rollouts, av_time), end='')
+            # av_time = _batch(self, root, batch_size=16)
+            rollouts += 1
+            #print('\r{} rollouts {}s each'.format(rollouts, av_time), end='')
+            print('\r{} rollouts'.format(rollouts), end='')
         print()
 
         action = self.best_child(root).action
-        logging.info('Got action in %f seconds.', time.time() - start)
+        logging.info('Got action %s in %f seconds.', action, time.time() - start)
         return action

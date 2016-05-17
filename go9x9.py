@@ -72,7 +72,7 @@ def main():
     while not done:
         env.render()
 
-        action = mcts.search(state, 1)
+        action = mcts.search(state, 10)
 
         obs, reward, done, info = env.step(action)
         state = info['state']
