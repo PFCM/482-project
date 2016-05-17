@@ -44,7 +44,9 @@ class UCTSearch(object):
         Args:
           descr: a GameDescription containing the game specific info
             such as transition functions etc.
-          tree_policy: a function which takes a UCTNode and returns a
+          tree_policy: a function which takes a UCTNode, a method to expand
+            a node by one child and a function to get the set of legal actions
+            from a state and returns a
             child on which to start a rollout.
           expand: a method takes a node that does not have all of its
             children, adds a child and returns it.
@@ -118,10 +120,23 @@ def negamax_backup(node, reward, **kwargs):
         node = node.parent
 
 
-def maxdepth_tree_policy(depth):
+def maxdepth_tree_policy(max_depth, choice_func):
     """Returns a tree policy which expands from the given node
     using the supplied function until a maximum depth is reached.
     
     Args:
       depth: the max depth we will consider.
+      choice_func: how to choose children if the node is fully
+        expanded.
     """
+    def _policy(node, expand, get_actions):
+        depth = 0
+        while depth < max_depth:
+            actions = get_actions(node)
+            if len(node.children) < actions:
+                return expand(node)
+            node = choice_func(node)
+        return node
+
+    return _policy
+        
