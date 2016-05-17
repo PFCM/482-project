@@ -16,35 +16,47 @@ def coord_to_action(board, c):
     i, j = board.coord_to_ij(c)
     return i * board.size + j
 
+# these functions need to be top level as they may be pickled
+
+class _reward(object):
+
+    def __init__(self, colour):
+        self.colour = colour
+
+    def __call__(self, state):
+        if state.board.is_terminal:
+            white_wins = state.board.official_score
+            if self.colour == pachi_py.WHITE and white_wins:
+                return 1
+            if self.colour == pachi_py.BLACK and not white_wins:
+                return 1
+        return 0
+
+def _terminal(state):
+    return state.board.is_terminal
+
+class _actions(object):
+
+    def __init__(self, colour):
+        self.colour = colour
+
+    def __call__(self, state):
+        return [coord_to_action(state.board, act)
+                for act in state.board.get_legal_coords(self.colour)]
+
+def _transition(state, action):
+    return state.act(action)
+
 
 def make_description(env):
     """make a uct.GameDescription describing this environment. Kind of hacky
     and a bit cheating?"""
     colour = env.player_color
 
-    def _reward(state):
-        if state.board.is_terminal:
-            white_wins = state.board.official_score
-            if colour == pachi_py.WHITE and white_wins:
-                return 1
-            if colour == pachi_py.BLACK and not white_wins:
-                return 1
-        return 0
-
-    def _terminal(state):
-        return state.board.is_terminal
-
-    def _actions(state):
-        return [coord_to_action(state.board, act)
-                for act in state.board.get_legal_coords(colour)]
-
-    def _transition(state, action):
-        return state.act(action)
-
     return uct.GameDescription(_transition,
-                               _reward,
+                               _reward(colour),
                                _terminal,
-                               _actions)
+                               _actions(colour))
 
 
 def main():

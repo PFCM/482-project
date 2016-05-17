@@ -50,7 +50,7 @@ def negamax_backup(node, reward, **kwargs):
 
 
 # TODO these guys will have to be classes if we want to use deco
-def maxdepth_tree_policy(max_depth, choice_func):
+class maxdepth_tree_policy(object):
     """Returns a tree policy which expands from the given node
     using the supplied function until a maximum depth is reached.
 
@@ -59,16 +59,19 @@ def maxdepth_tree_policy(max_depth, choice_func):
       choice_func: how to choose children if the node is fully
         expanded.
     """
-    def _treepolicy(node, expand, descr):
+
+    def __init__(self, max_depth, choice_func):
+        self.max_depth = max_depth
+        self.choice_func = choice_func
+    
+    def __call__(self, node, expand, descr):
         depth = 0
-        while depth < max_depth:
+        while depth < self.max_depth:
             actions = descr.legal_actions(node.state)
             if len(node.children) < len(actions):
                 return expand(node, descr)
-            node = choice_func(node)
+            node = self.choice_func(node)
         return node
-
-    return _treepolicy
 
 
 def uniform_rollout(start_node, game_descr):
@@ -84,21 +87,23 @@ def uniform_rollout(start_node, game_descr):
     return game_descr.reward_function(state)
 
 
-def choose_ucb1(constant):
+class choose_ucb1(object):
     """gets a function which chooses a child node according to
     ucb 1 with given constant"""
 
-    def _ucb1(node):
+    def __init__(self, constant):
+        self.constant = constant
+
+    def __call__(self, node):
         # TODO: make this tidier and more robust
         best_val = 0
         best_child = node.children[0]
         for child in node.children:
-            val = (node.Q / child.count) + constant * np.sqrt(2 * np.log(node.count)/child.count)
+            val = (node.Q / child.count) + self.constant * np.sqrt(2 * np.log(node.count)/child.count)
             if val > best_val:  # or maybe child.count is 0?
                 best_val = val
                 best_child = child
         return best_child
-    return _ucb1
 
 
 def uniform_expand(node, game_descr):
@@ -146,11 +151,12 @@ class GameDescription(object):
 # game description
 @concurrent
 def _single_search(obj, index, root, results):
+    start = time.time()
     rollout_start = obj.tree_policy(
         root, obj.expand, obj.descr)
     reward = obj.default_policy(rollout_start,
                                 obj.descr)
-    results[index] = (rollout_start, reward)
+    results[index] = (rollout_start, reward, time.time()-start)
 
 
 @synchronized
@@ -161,8 +167,11 @@ def _batch(obj, root, batch_size=16):
     backups = {}
     for index in range(batch_size):
         _single_search(obj, index, root, backups)
+    total_time = 0
     for index, result in backups.items():
-        obj.backup(*result)
+        obj.backup(*result[:-1])
+        total_time += result[-1]
+    return total_time / batch_size
 
 
 class UCTSearch(object):
@@ -215,18 +224,16 @@ class UCTSearch(object):
         rollouts = 0
         while time.time() < (start + length):
             # this is where we could be parallel
-            rollout_start = self.tree_policy(root,
-                                             self.expand,
-                                             self.descr)
-            reward = self.default_policy(rollout_start,
-                                         self.descr)
-            self.backup(rollout_start, reward)
-            if root is None:
-                print('root is none?')
-                raise ValueError
-            # _batch(self, root, batch_size=16)
-            rollouts += 1
-            print('\r{} rollouts'.format(rollouts), end='')
+            # rollout_start = self.tree_policy(root,
+            #                                 self.expand,
+            #                                 self.descr)
+            # reward = self.default_policy(rollout_start,
+            #                             self.descr)
+            # self.backup(rollout_start, reward)
+        
+            av_time = _batch(self, root, batch_size=16)
+            rollouts += 16
+            print('\r{} rollouts {}s each'.format(rollouts, av_time), end='')
         print()
 
         action = self.best_child(root).action
