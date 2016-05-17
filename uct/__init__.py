@@ -1,1 +1,1 @@
-from uct import *
+from uct.uct import *
