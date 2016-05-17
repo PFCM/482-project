@@ -37,8 +37,10 @@ class GameDescription(object):
 class UCTSearch(object):
     """UCT search :)"""
 
-    def __init__(self, descr, tree_policy, expand, default_policy,
-                 best_child, backup=negamax_backup):
+    def __init__(self, descr,
+                 tree_policy=maxdepth_tree_policy(10, choose_ucb1(c=.1)),
+                 expand=uniform_expand, default_policy=uniform_rollout,
+                 best_child=choose_ucb1(c=.1), backup=negamax_backup):
         """Initialise the search object.
 
         Args:
@@ -50,8 +52,8 @@ class UCTSearch(object):
             child on which to start a rollout.
           expand: a method takes a node that does not have all of its
             children, adds a child and returns it.
-          default_policy: a function which takes a node and performs a
-            rollout returning the reward.
+          default_policy: a function which takes a node and the game description
+            and performs a rollout returning the reward.
           best_child: a function which takes a node and returns the
             best child.
           backup: a function which takes a node and a reward and backs
@@ -81,7 +83,8 @@ class UCTSearch(object):
         while time.time() < (start + time):
             # this is where we could be parallel
             rollout_start = self.tree_policy(root)
-            reward = self.default_policy(rollout_start)
+            reward = self.default_policy(rollout_start,
+                                         self.descr)
             self.backup(rollout_start, reward)
 
         action = self.best_child(root).action
@@ -93,7 +96,8 @@ class UCTNode(object):
     """The nodes for our tree"""
 
     def __init__(self, state, parent, action):
-        """Make a new node.
+        """Make a new node. If parent is not None, appends self to 
+        parent's list of children.
         
         Args:
           state: whatever we are using for the state.
@@ -103,7 +107,11 @@ class UCTNode(object):
         self.state = state
         self.parent = parent
         self.action = action
+        self.Q = 0
+        self.count = 0
         self.children = []
+        if parent:
+            parent.children.append(self)
 
 
 def negamax_backup(node, reward, **kwargs):
@@ -140,3 +148,41 @@ def maxdepth_tree_policy(max_depth, choice_func):
 
     return _policy
         
+
+def uniform_rollout(start_node, game_descr):
+    """Does rollout with uniform probabilities. Returns reward
+    from the terminal state we find."""
+    state = start_node.state
+    while not game_descr.terminal_pred(state):
+        action = np.random.choice(game_desc.legal_actions(state))
+        state = game_desc.transition_function(state, action)
+    return game_desc.reward_function(state)
+
+
+def choose_ucb1(constant):
+    """gets a function which chooses a child node according to 
+    ucb 1 with given constant"""
+
+    def _ucb1(node):
+        best_val = 0
+        best_child = None
+        for child in node.children:
+            val = (node.Q / child.count) + constant * np.sqrt(2 * np.log(node.count)/child.count)
+            if val > best_val:  # or maybe child.count is 0?
+                best_val = val
+                best_child = child
+        return best_child
+
+    
+def uniform_expand(node, game_descr):
+    """adds a child to node by sampling uniformly at random from available moves"""
+    moves = game_descr.legal_actions(node.state)
+    # get the set of actions we haven't tried
+    done = [child.action for child in node.children]
+    moves = [move for move in moves if move not in done]
+    action = np.random.choice(moves)
+    # got action
+    child = UCTNode(game_descr.transition_function(node.state, action),
+                    node, action)
+    
+    return child
