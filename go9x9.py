@@ -25,24 +25,22 @@ class _reward(object):
 
     def __call__(self, state):
         if state.board.is_terminal:
-            white_wins = state.board.official_score
+            white_wins = state.board.official_score > 0
             if self.colour == pachi_py.WHITE and white_wins:
                 return 1
             if self.colour == pachi_py.BLACK and not white_wins:
                 return 1
-        return 0
+            return 0
+        raise ValueError('reward of non-terminal state is probably'
+                         ' not what you intended.')
 
 def _terminal(state):
     return state.board.is_terminal
 
-class _actions(object):
 
-    def __init__(self, colour):
-        self.colour = colour
-
-    def __call__(self, state):
-        return [coord_to_action(state.board, act)
-                for act in state.board.get_legal_coords(self.colour)]
+def _actions(state):
+    return [coord_to_action(state.board, act)
+            for act in state.board.get_legal_coords(state.color)]
 
 def _transition(state, action):
     return state.act(action)
@@ -56,7 +54,7 @@ def make_description(env):
     return uct.GameDescription(_transition,
                                _reward(colour),
                                _terminal,
-                               _actions(colour))
+                               _actions)
 
 
 def main():
