@@ -108,10 +108,13 @@ def main():
             state = info['state']
 
             if moves % 50 == 0:
-                print('\r{}'.format(moves), end='')
-        print('\r{}'.format(moves), end='')
+                print('                              '
+                      '\r{}'.format(moves), end='')
+        print('                                   '
+              '\r{}'.format(moves), end='')
 
-        print('\r({}) got reward {}'.format(game+1, reward))
+        print('                                      '
+              '\r({}) got reward {}'.format(game+1, reward), end='')
         if reward == 1:
             wins += 1
     print('///Win {}/{}'.format(wins, 100))
