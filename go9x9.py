@@ -1,8 +1,10 @@
 """use uct on 9x9 go"""
 import time
 import logging
+import sys
 
 import gym
+from gym.envs.registration import register
 import pachi_py
 
 import uct
@@ -16,8 +18,8 @@ def coord_to_action(board, c):
     i, j = board.coord_to_ij(c)
     return i * board.size + j
 
-# these functions need to be top level as they may be pickled
 
+# these functions need to be top level as they may be pickled
 class _reward(object):
 
     def __init__(self, colour):
@@ -34,6 +36,19 @@ class _reward(object):
         raise ValueError('reward of non-terminal state is probably'
                          ' not what you intended.')
 
+
+def other_reward(state):
+    if state.board.is_terminal:
+        white_wins = state.board.official_score > 0
+        if state.color == pachi_py.WHITE and white_wins:
+            return 1
+        if state.color == pachi_py.BLACK and not white_wins:
+            return 1
+        return -1
+    raise ValueError('reward of non-terminal state is probably'
+                     ' not what you intended.')
+
+
 def _terminal(state):
     return state.board.is_terminal
 
@@ -41,6 +56,7 @@ def _terminal(state):
 def _actions(state):
     return [coord_to_action(state.board, act)
             for act in state.board.get_legal_coords(state.color)]
+
 
 def _transition(state, action):
     return state.act(action)
@@ -52,30 +68,53 @@ def make_description(env):
     colour = env.player_color
 
     return uct.GameDescription(_transition,
-                               _reward(colour),
+                               other_reward,  # (colour),
                                _terminal,
                                _actions)
 
 
 def main():
     logging.getLogger().setLevel(logging.INFO)
-    env = gym.make('Go9x9-v0')
-    obs = env.reset()
+    register(
+        id='Go9x9me-v0',
+        entry_point='gym.envs.board_game:GoEnv',
+        kwargs={
+            'player_color': 'black',
+            'opponent': 'random',
+            'observation_type': 'image3c',
+            'illegal_move_mode': 'raise',
+            'board_size': 9,
+        },
+    )
+    env = gym.make('Go9x9me-v0')
 
-    descr = make_description(env)
-    mcts = uct.UCTSearch(descr)
+    wins = 0
 
-    done = False
-    state = env._state
-    while not done:
-        env.render()
+    for game in range(100):
+        obs = env.reset()
 
-        action = mcts.search(state, 10)
+        descr = make_description(env)
+        mcts = uct.UCTSearch(descr)
 
-        obs, reward, done, info = env.step(action)
-        state = info['state']
+        done = False
+        state = env._state
+        moves = 0
+        while not done:
+            # env.render()
 
-    print('got reward {}'.format(reward))
+            action = mcts.search(state, float(sys.argv[1]))
+            moves += 1
+            obs, reward, done, info = env.step(action)
+            state = info['state']
+
+            if moves % 50 == 0:
+                print('\r{}'.format(moves), end='')
+        print('\r{}'.format(moves), end='')
+
+        print('\r({}) got reward {}'.format(game+1, reward))
+        if reward == 1:
+            wins += 1
+    print('///Win {}/{}'.format(wins, 100))
 
 
 if __name__ == '__main__':

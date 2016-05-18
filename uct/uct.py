@@ -45,8 +45,8 @@ def negamax_backup(node, reward, runs=1, **kwargs):
     while node is not None:
         node.count += runs
         node.Q += reward
-        #reward *= -1#-.999
-        reward = 1 - reward
+        reward *= -1
+        # reward = 1 - reward
         node = node.parent
 
 
@@ -63,7 +63,7 @@ class maxdepth_tree_policy(object):
     def __init__(self, max_depth, choice_func):
         self.max_depth = max_depth
         self.choice_func = choice_func
-    
+
     def __call__(self, node, expand, descr):
         depth = 0
         while depth < self.max_depth:
@@ -81,7 +81,7 @@ def uniform_rollout(start_node, game_descr):
     while not game_descr.terminal_predicate(state):
         action = np.random.choice(game_descr.legal_actions(state))
         state = game_descr.transition_function(state, action)
-    return game_descr.reward_function(state) #* (0.999 ** steps)
+    return game_descr.reward_function(state)
 
 
 class choose_ucb(object):
@@ -96,7 +96,8 @@ class choose_ucb(object):
         best_val = 0
         best_child = node.children[0]
         for child in node.children:
-            val = (node.Q / child.count) + self.constant * np.sqrt(2 * np.log(node.count)/child.count)
+            val = (node.Q / child.count) + self.constant * \
+                np.sqrt(2 * np.log(node.count)/child.count)
             if val > best_val:  # or maybe child.count is 0?
                 best_val = val
                 best_child = child
@@ -104,7 +105,8 @@ class choose_ucb(object):
 
 
 def uniform_expand(node, game_descr):
-    """adds a child to node by sampling uniformly at random from available moves"""
+    """adds a child to node by sampling uniformly at random from available
+    moves"""
     legal_moves = game_descr.legal_actions(node.state)
     # get the set of actions we haven't tried
     # somehow we are getting illegal moves here
@@ -115,7 +117,6 @@ def uniform_expand(node, game_descr):
     # got action
     child = UCTNode(game_descr.transition_function(node.state, action),
                     node, action)
-
     return child
 
 
@@ -141,10 +142,9 @@ class GameDescription(object):
         self.terminal_predicate = terminal_predicate
         self.legal_actions = legal_actions
 
-        
+
 @concurrent
-def _single_search(obj, rollout_start, num=16):
-    #logging.info('%d rolling out', index)
+def _single_search(obj, rollout_start, num=256):
     start = time.time()
     reward, runs = 0, 0
     for i in range(num):
@@ -163,14 +163,14 @@ def _batch(obj, root, batch_size=16):
     for index in range(batch_size):
         rollout_start = obj.tree_policy(
             root, obj.expand, obj.descr)
-        #logging.info('Started %d', index)
-        backups[index] = _single_search(obj, rollout_start)
+        # logging.info('Started %d', index)
+        backups[rollout_start] = _single_search(obj, rollout_start)
     total_time = 0
-    for index, result in backups.items():
-        #logging.info('got results for %d', index)
-        reward, runs, time = result
+    for node, result in backups.items():
+        # logging.info('got results for %d', index)
+        reward, runs, dur = result
         obj.backup(node, reward, runs)
-        total_time += time
+        # total_time += dur
     return total_time / batch_size / 16
 
 
@@ -192,10 +192,10 @@ class UCTSearch(object):
             child on which to start a rollout.
           expand: a method takes a node that does not have all of its
             children, adds a child and returns it.
-          default_policy: a function which takes a node and the game description
-            and performs a rollout returning the reward.
+          default_policy: a function which takes a node and the game
+            description and performs a rollout returning the reward.
           best_child: a function which takes a node and returns the
-            best child.   
+            best child.
           backup: a function which takes a node and a reward and backs
             up the reward all the way to the root, updating the node
             statistics.
@@ -225,7 +225,7 @@ class UCTSearch(object):
         else:
             root = self._get_child(self.last_node, state)
             root.parent = None
-        logging.info('starting rollouts (%d seconds)', length)
+        # logging.info('starting rollouts (%d seconds)', length)
         rollouts = 0
         begin_r = time.time()
         while time.time() < (start + length):
@@ -236,20 +236,21 @@ class UCTSearch(object):
             reward = self.default_policy(rollout_start,
                                          self.descr)
             self.backup(rollout_start, reward)
-            
-            #av_time = _batch(self, root, batch_size=16)
+
+            # av_time = _batch(self, root, batch_size=16)
             rollouts += 1
-            #print('\r{} rollouts {}s each'.format(rollouts, av_time), end='')
-            if rollouts % 100 == 0:
-                print('\r{} rollouts ({:.3f}s)'.format(rollouts, (time.time()-begin_r)/100), end='')
+            # print('\r{} rollouts {}s each'.format(rollouts, av_time), end='')
+            if rollouts % 128 == 0:
+                # print('\r{} rollouts ({:.3f}s)'.format(
+                #    rollouts, (time.time()-begin_r)/100), end='')
                 begin_r = time.time()
-        print('\r{} rollouts'.format(rollouts))
+        # print('\r{} rollouts'.format(rollouts))
         action_node = self.best_child(root)
         action = action_node.action
-        logging.info('Got action %s in %f seconds. (average Q: %f, %d visits)',
-                     action, time.time() - start,
-                     action_node.Q / action_node.count,
-                     action_node.count)
+        # logging.info('Got action %s in %f seconds. (average Q: %f, %d visits)',
+        #              action, time.time() - start,
+        #              action_node.Q / action_node.count,
+        #              action_node.count)
         self.last_node = action_node
         return action
 
@@ -257,10 +258,10 @@ class UCTSearch(object):
         """Looks for a child of the given node with an equivalent state"""
         for child in node.children:
             if state.board == child.state.board:
-                print('reusing! ({:.1f}/{} = {:.4f})'.format(
-                    child.Q, child.count,
-                    child.Q/child.count))
-                print('  ({}) children'.format(len(child.children)))
+                # print('reusing! ({:.1f}/{} = {:.4f})'.format(
+                #     child.Q, child.count,
+                #     child.Q/child.count))
+                # print('  ({}) children'.format(len(child.children)))
                 return child
-        print('could not find')
+        # print('could not find')
         return UCTNode(state, None, None)
