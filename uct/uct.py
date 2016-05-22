@@ -8,8 +8,6 @@ from six.moves import xrange
 import time
 import logging
 
-from deco import concurrent, synchronized
-
 import numpy as np
 
 
@@ -141,37 +139,6 @@ class GameDescription(object):
         self.reward_function = reward_function
         self.terminal_predicate = terminal_predicate
         self.legal_actions = legal_actions
-
-
-@concurrent
-def _single_search(obj, rollout_start, num=256):
-    start = time.time()
-    reward, runs = 0, 0
-    for i in range(num):
-        reward += obj.default_policy(rollout_start,
-                                     obj.descr)
-        runs += 1
-    return (reward, runs, time.time()-start)
-
-
-@synchronized
-def _batch(obj, root, batch_size=16):
-    """Does batch_size concurrent searches.
-    Backs them up serially.
-    """
-    backups = {}
-    for index in range(batch_size):
-        rollout_start = obj.tree_policy(
-            root, obj.expand, obj.descr)
-        # logging.info('Started %d', index)
-        backups[rollout_start] = _single_search(obj, rollout_start)
-    total_time = 0
-    for node, result in backups.items():
-        # logging.info('got results for %d', index)
-        reward, runs, dur = result
-        obj.backup(node, reward, runs)
-        # total_time += dur
-    return total_time / batch_size / 16    
 
 
 class UCTSearch(object):
