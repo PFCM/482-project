@@ -32,14 +32,14 @@ class _reward(object):
                 return 1
             if self.colour == pachi_py.BLACK and not white_wins:
                 return 1
-            return 0
+            return -1
         raise ValueError('reward of non-terminal state is probably'
                          ' not what you intended.')
 
 
 def other_reward(state):
     if state.board.is_terminal:
-        white_wins = state.board.official_score > 0
+        white_wins = state.board.fast_score > 0
         if state.color == pachi_py.WHITE and white_wins:
             return 1
         if state.color == pachi_py.BLACK and not white_wins:
@@ -75,18 +75,19 @@ def make_description(env):
 
 def main():
     logging.getLogger().setLevel(logging.INFO)
-    register(
-        id='Go9x9me-v0',
-        entry_point='gym.envs.board_game:GoEnv',
-        kwargs={
-            'player_color': 'black',
-            'opponent': 'random',
-            'observation_type': 'image3c',
-            'illegal_move_mode': 'raise',
-            'board_size': 9,
-        },
-    )
-    env = gym.make('Go9x9me-v0')
+    # register(
+    #     id='Go9x9me-v0',
+    #     entry_point='gym.envs.board_game:GoEnv',
+    #     kwargs={
+    #         'player_color': 'black',
+    #         'opponent': 'random',
+    #         'observation_type': 'image3c',
+    #         'illegal_move_mode': 'raise',
+    #         'board_size': 9,
+    #     },
+    # )
+    # env = gym.make('Go9x9me-v0')
+    env = gym.make('Go9x9-v0')
 
     wins = 0
 
@@ -100,7 +101,7 @@ def main():
         state = env._state
         moves = 0
         while not done:
-            # env.render()
+            env.render()
 
             action = mcts.search(state, float(sys.argv[1]))
             moves += 1
