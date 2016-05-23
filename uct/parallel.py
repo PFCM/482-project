@@ -37,17 +37,19 @@ class Searcher(multiprocessing.Process):
         print('{}: beginning'.format(name))
         while True:
             # TODO: would it be better to get a state or a state, action pair?
+            # yes, yes it would be.
             job = self.task_queue.get()
             if job is None:
                 self.task_queue.task_done()
                 print('{}: exiting'.format(name))
                 break
-            node, num = job
+            (state, action, description), num = job
+            root_state = description.transition_function(state, action)
             # do the work
             q_sum = 0
             print('{}: doing {} searches'.format(name, num))
             for _ in xrange(num):
-                q_sum += search_func(node, self.tree_depth)
+                q_sum += self.do_search(root_state, self.tree_depth)
 
             time.sleep(0.1)
             self.result_queue.put((node, q_sum))
@@ -64,13 +66,14 @@ class ParallelSearcher(object):
         Args:
             max_depth: the maximum depth to go down the tree before starting
                 a rollout.
-            search_func: a functon applied to 
+            search_func: a function that does something given a state
             num_processes: how many searches to do in parallel.
             -- will require more soon.
         """
         self.tasks = multiprocessing.JoinableQueue()
         self.results = multiprocessing.Queue()
-        self.consumers = [Searcher(self.tasks, self.results, max_depth)
+        self.consumers = [Searcher(self.tasks, self.results, max_depth,
+                                   search_func)
                           for _ in xrange(num_processes)]
         print('STARTING SEARCH PROCESSES')
         for proc in self.consumers:
@@ -86,8 +89,20 @@ class ParallelSearcher(object):
 
     def search(self, start, game_descr, num=128):
         """Does some parallel searching from the given starting point"""
+        # grab some guys to explore
+        count = 0  # how many have we enqueued?
         for action in game_descr.legal_actions(start):
-            self.tasks.put(((start, action), num))
+            self.tasks.put(((start, action, game_descr), num))
+            count += 1
+        # once we've tried them all once we should use UCB to start choosing
+        # them, but we don't know if any have come in yet
+        while count < num:  # who knows might never happen
+            # get a result
+            result = self.results.get()
+            # TODO: UCB here
+            print(result)
+            self.tasks.put(None)
+            count += 1
         self.tasks.join()
         # can iter Queue?
         while not self.results.empty():
