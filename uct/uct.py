@@ -8,8 +8,6 @@ from six.moves import xrange
 import time
 import logging
 
-from deco import concurrent, synchronized
-
 import numpy as np
 
 
@@ -143,42 +141,11 @@ class GameDescription(object):
         self.legal_actions = legal_actions
 
 
-@concurrent
-def _single_search(obj, rollout_start, num=256):
-    start = time.time()
-    reward, runs = 0, 0
-    for i in range(num):
-        reward += obj.default_policy(rollout_start,
-                                     obj.descr)
-        runs += 1
-    return (reward, runs, time.time()-start)
-
-
-@synchronized
-def _batch(obj, root, batch_size=16):
-    """Does batch_size concurrent searches.
-    Backs them up serially.
-    """
-    backups = {}
-    for index in range(batch_size):
-        rollout_start = obj.tree_policy(
-            root, obj.expand, obj.descr)
-        # logging.info('Started %d', index)
-        backups[rollout_start] = _single_search(obj, rollout_start)
-    total_time = 0
-    for node, result in backups.items():
-        # logging.info('got results for %d', index)
-        reward, runs, dur = result
-        obj.backup(node, reward, runs)
-        # total_time += dur
-    return total_time / batch_size / 16
-
-
 class UCTSearch(object):
     """UCT search :)"""
 
     def __init__(self, descr,
-                 tree_policy=maxdepth_tree_policy(10, choose_ucb(1)),
+                 tree_policy=maxdepth_tree_policy(20, choose_ucb(.1)),
                  expand=uniform_expand, default_policy=uniform_rollout,
                  best_child=choose_ucb(0), backup=negamax_backup):
         """Initialise the search object.
@@ -225,7 +192,7 @@ class UCTSearch(object):
         else:
             root = self._get_child(self.last_node, state)
             root.parent = None
-        # logging.info('starting rollouts (%d seconds)', length)
+        logging.info('starting rollouts (%d seconds)', length)
         rollouts = 0
         begin_r = time.time()
         while time.time() < (start + length):
@@ -240,17 +207,17 @@ class UCTSearch(object):
             # av_time = _batch(self, root, batch_size=16)
             rollouts += 1
             # print('\r{} rollouts {}s each'.format(rollouts, av_time), end='')
-            if rollouts % 128 == 0:
-                # print('\r{} rollouts ({:.3f}s)'.format(
-                #    rollouts, (time.time()-begin_r)/100), end='')
+            if rollouts % 100 == 0:
+                print('\r{} rollouts ({:.3f}s)'.format(
+                    rollouts, (time.time()-begin_r)/100), end='')
                 begin_r = time.time()
-        # print('\r{} rollouts'.format(rollouts))
+        print('\r{} rollouts'.format(rollouts))
         action_node = self.best_child(root)
         action = action_node.action
-        # logging.info('Got action %s in %f seconds. (average Q: %f, %d visits)',
-        #              action, time.time() - start,
-        #              action_node.Q / action_node.count,
-        #              action_node.count)
+        logging.info('Got action %s in %f seconds. (average Q: %f, %d visits)',
+                     action, time.time() - start,
+                     action_node.Q / action_node.count,
+                     action_node.count)
         self.last_node = action_node
         return action
 
@@ -258,10 +225,10 @@ class UCTSearch(object):
         """Looks for a child of the given node with an equivalent state"""
         for child in node.children:
             if state.board == child.state.board:
-                # print('reusing! ({:.1f}/{} = {:.4f})'.format(
-                #     child.Q, child.count,
-                #     child.Q/child.count))
-                # print('  ({}) children'.format(len(child.children)))
+                print('reusing! ({:.1f}/{} = {:.4f})'.format(
+                    child.Q, child.count,
+                    child.Q/child.count))
+                print('  ({}) children'.format(len(child.children)))
                 return child
         # print('could not find')
         return UCTNode(state, None, None)

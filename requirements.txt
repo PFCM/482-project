@@ -1,2 +1,2 @@
-gym[board_games]
+gym[board_game]
 deco
