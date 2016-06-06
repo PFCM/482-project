@@ -64,7 +64,8 @@ class maxdepth_tree_policy(object):
 
     def __call__(self, node, expand, descr):
         depth = 0
-        while depth < self.max_depth:
+        while depth < self.max_depth and \
+         not descr.terminal_predicate(node.state):
             actions = descr.legal_actions(node.state)
             if len(node.children) < len(actions):
                 return expand(node, descr)
@@ -84,13 +85,14 @@ def uniform_rollout(start_node, game_descr):
 
 class choose_ucb(object):
     """gets a function which chooses a child node according to
-    ucb 1 with given constant"""
+    ucb with given constant"""
 
     def __init__(self, constant):
         self.constant = constant
 
     def __call__(self, node):
         # TODO: make this tidier and more robust
+        # eg, what if it has no children?
         best_val = 0
         best_child = node.children[0]
         for child in node.children:
@@ -122,7 +124,7 @@ class GameDescription(object):
     """Contains the transition functions etc for the game"""
 
     def __init__(self, transition_function, reward_function,
-                 terminal_predicate, legal_actions):
+                 terminal_predicate, legal_actions, state_eq=None):
         """
         Args:
           transition_function: a function which takes a state and an
@@ -139,13 +141,17 @@ class GameDescription(object):
         self.reward_function = reward_function
         self.terminal_predicate = terminal_predicate
         self.legal_actions = legal_actions
+        if not state_eq:
+            self.state_eq = lambda a, b: a == b
+        else:
+            self.state_eq = state_eq
 
 
 class UCTSearch(object):
     """UCT search :)"""
 
     def __init__(self, descr,
-                 tree_policy=maxdepth_tree_policy(20, choose_ucb(.1)),
+                 tree_policy=maxdepth_tree_policy(500, choose_ucb(1)),
                  expand=uniform_expand, default_policy=uniform_rollout,
                  best_child=choose_ucb(0), backup=negamax_backup):
         """Initialise the search object.
@@ -190,7 +196,7 @@ class UCTSearch(object):
         if not self.last_node:
             root = UCTNode(state, None, None)
         else:
-            root = self._get_child(self.last_node, state)
+            root = self._get_child(self.last_node, state, self.descr.state_eq)
             root.parent = None
         logging.info('starting rollouts (%d seconds)', length)
         rollouts = 0
@@ -212,6 +218,9 @@ class UCTSearch(object):
                     rollouts, (time.time()-begin_r)/100), end='')
                 begin_r = time.time()
         print('\r{} rollouts'.format(rollouts))
+        if len(root.children) == 0:
+            raise Exception(
+                'something is really quite wrong -- root has no children')
         action_node = self.best_child(root)
         action = action_node.action
         logging.info('Got action %s in %f seconds. (average Q: %f, %d visits)',
@@ -221,10 +230,11 @@ class UCTSearch(object):
         self.last_node = action_node
         return action
 
-    def _get_child(self, node, state):
+    def _get_child(self, node, state, eq):
         """Looks for a child of the given node with an equivalent state"""
         for child in node.children:
-            if state.board == child.state.board:
+            # if state.board == child.state.board:
+            if eq(state, child.state):
                 print('reusing! ({:.1f}/{} = {:.4f})'.format(
                     child.Q, child.count,
                     child.Q/child.count))
