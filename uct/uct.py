@@ -96,7 +96,7 @@ class choose_ucb(object):
         best_val = 0
         best_child = node.children[0]
         for child in node.children:
-            val = (node.Q / child.count) + self.constant * \
+            val = (child.Q / child.count) + self.constant * \
                 np.sqrt(2 * np.log(node.count)/child.count)
             if val > best_val:  # or maybe child.count is 0?
                 best_val = val
@@ -109,10 +109,8 @@ def uniform_expand(node, game_descr):
     moves"""
     legal_moves = game_descr.legal_actions(node.state)
     # get the set of actions we haven't tried
-    # somehow we are getting illegal moves here
     done = [child.action for child in node.children]
     moves = [move for move in legal_moves if move not in done]
-    # print('{}/{} moves'.format(len(moves), len(legal_moves)))
     action = np.random.choice(moves)
     # got action
     child = UCTNode(game_descr.transition_function(node.state, action),
@@ -151,7 +149,7 @@ class UCTSearch(object):
     """UCT search :)"""
 
     def __init__(self, descr,
-                 tree_policy=maxdepth_tree_policy(500, choose_ucb(1)),
+                 tree_policy=maxdepth_tree_policy(25, choose_ucb(1)),
                  expand=uniform_expand, default_policy=uniform_rollout,
                  best_child=choose_ucb(0), backup=negamax_backup):
         """Initialise the search object.
