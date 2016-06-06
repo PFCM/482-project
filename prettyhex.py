@@ -17,9 +17,19 @@ class PrettyHexEnv(board_game.HexEnv):
     BLACKONWHITE = '\033[30;47m'
     BOLDBLACKONWHITE = '\033[1;30;47m'
     WHITE_BACK = '\033[47m'
+    BLINK = '\033[5m'
 
     def __init__(self, *args, **kwargs):
         super(PrettyHexEnv, self).__init__(*args, **kwargs)
+        self.last_move = (-1, -1)
+
+
+    def _step(self, action):
+        """intercept the last move played by the agent"""
+        self.last_move = board_game.HexEnv.action_to_coordinate(
+            self.state, action)
+        return super(PrettyHexEnv, self)._step(action)
+
 
     def _render(self, mode='human', close=False):
         # pretty much copied wholesale from
@@ -45,6 +55,8 @@ class PrettyHexEnv(board_game.HexEnv):
                 ' ' * (2 + i * 3) +  str(i + 1) + '  |' +
                 PrettyHexEnv.ENDC)
             for j in range(board.shape[1]):
+                if (i, j) == self.last_move:
+                    outfile.write(PrettyHexEnv.BLINK)
                 if board[2, i, j] == 1:
                     outfile.write('  O  ')
                 elif board[0, i, j] == 1:
@@ -68,3 +80,5 @@ if __name__ == '__main__':
     print(PrettyHexEnv.RED + 'red' + PrettyHexEnv.ENDC)
     print(PrettyHexEnv.BOLD + 'bold' + PrettyHexEnv.ENDC)
     print(PrettyHexEnv.BLACKONWHITE + 'black on white' + PrettyHexEnv.ENDC)
+    # for kicks
+    print('\033[5m' + 'blinken' + PrettyHexEnv.ENDC)
