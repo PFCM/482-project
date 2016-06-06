@@ -91,7 +91,7 @@ def get_human_opponent_env():
     # this part is pretty much the same as gym.envs.__init__.py
     register(
         id='Hex9x9-human-v0',
-        entry_point='gym.envs.board_game:HexEnv',
+        entry_point='prettyhex:PrettyHexEnv',
         kwargs={
             'player_color': 'black',
             'observation_type': 'numpy3c',
