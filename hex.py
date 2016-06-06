@@ -2,16 +2,20 @@
 import time
 import sys
 import logging
+import argparse
 
 import numpy as np
 import gym
 
 from gym.envs import board_game
+from gym.envs.registration import register
 
 import uct
 
 # game state will be a tuple:
 # (board, player)
+
+ENV = None
 
 
 def _reward(state):
@@ -55,6 +59,8 @@ def make_description():
 
 def human_text_policy(state):
     """Asks at the terminal for a move. Asks again if the move is illegal"""
+    global ENV  # :(
+    ENV.render()
     def _parse_move(text):
         coords = [int(pos)-1 for pos in text.split(',')]
         return board_game.HexEnv.coordinate_to_action(state, coords)
@@ -66,9 +72,49 @@ def human_text_policy(state):
     return a
 
 
+def get_args():
+    """Get some arguments for things like time to think or what the opponent
+    should be."""
+    parser = argparse.ArgumentParser(description='Play Hex.')
+    parser.add_argument('--opponent', '-o', choices=['human', 'random'],
+                        default='random',
+                        help='Who the tree search plays')
+    parser.add_argument('--time', '-t', type=float, default=0.1,
+                        help='How long to give the tree search to think.')
+
+    return parser.parse_args()
+
+
+def get_human_opponent_env():
+    """Registers and makes a 9x9 hex environment with the above function that
+    prompts for input as opponent"""
+    # this part is pretty much the same as gym.envs.__init__.py
+    register(
+        id='Hex9x9-human-v0',
+        entry_point='gym.envs.board_game:HexEnv',
+        kwargs={
+            'player_color': 'black',
+            'observation_type': 'numpy3c',
+            'opponent': human_text_policy,  # apart from here
+            'illegal_move_mode': 'raise',  # and here for debugging
+            'board_size': 9
+        }
+    )
+    return gym.make('Hex9x9-human-v0')
+
+
 def main():
     logging.getLogger().setLevel(logging.INFO)
-    env = gym.make('Hex9x9-v0')
+
+    args = get_args()
+
+    if args.opponent == 'random':
+        env = gym.make('Hex9x9-v0')
+    elif args.opponent == 'human':
+        # the harder part
+        env = get_human_opponent_env()
+        global ENV
+        ENV = env  # this is gross
     observation = env.reset()
     mcts = uct.UCTSearch(make_description())
 
@@ -77,9 +123,10 @@ def main():
         env.render()
 
         action = mcts.search((env.state, env.to_play),
-                             float(sys.argv[1]))
+                             args.time)
         observation, reward, done, info = env.step(action)
         print('reward: {}'.format(reward))
+
         if done:
             break
 
