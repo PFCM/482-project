@@ -103,7 +103,7 @@ def get_human_opponent_env():
     prompts for input as opponent"""
     # this part is pretty much the same as gym.envs.__init__.py
     register(
-        id='Hex9x9-human-v0',
+        id='PrettyHex9x9-human-v0',
         entry_point='prettyhex:PrettyHexEnv',
         kwargs={
             'player_color': 'black',
@@ -113,7 +113,24 @@ def get_human_opponent_env():
             'board_size': 9
         }
     )
-    return gym.make('Hex9x9-human-v0')
+    return gym.make('PrettyHex9x9-human-v0')
+
+
+def get_random_opponent_env():
+    """Registers and makes a 9x9 hex env, exactly like the standard but a bit
+    easier to see what's going on."""
+    register(
+        id='PrettyHex9x9-random-v0',
+        entry_point='prettyhex:PrettyHexEnv',
+        kwargs={
+            'player_color': 'black',
+            'observation_type': 'numpy3c',
+            'opponent': 'random',  # apart from here
+            'illegal_move_mode': 'raise',  # and here for debugging
+            'board_size': 9
+        }
+    )
+    return gym.make('PrettyHex9x9-random-v0')
 
 
 def main():
@@ -122,7 +139,7 @@ def main():
     args = get_args()
 
     if args.opponent == 'random':
-        env = gym.make('Hex9x9-v0')
+        env = get_random_opponent_env()
     elif args.opponent == 'human':
         # the harder part
         env = get_human_opponent_env()

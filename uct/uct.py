@@ -264,7 +264,7 @@ class UCTSearch(object):
         action_node = self.best_child(root)
         action = action_node.action
         logging.info('Transposition table has %d elements',
-                      len(UCTNode.state_table))
+                     len(UCTNode.state_table))
         logging.info('Got action %s in %f seconds. (average Q: %f, %d visits)',
                      action, time.time() - start,
                      action_node.Q / action_node.count,
