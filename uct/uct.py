@@ -13,8 +13,9 @@ import numpy as np
 
 class UCTNode(object):
     """The nodes for our tree"""
+    state_table = {}  # the transposition table
 
-    def __init__(self, state, parent, action):
+    def __init__(self, state, parent, action, descr):
         """Make a new node. If parent is not None, appends self to
         parent's list of children.
 
@@ -22,15 +23,51 @@ class UCTNode(object):
           state: whatever we are using for the state.
           parent: another node or None for the root.
           action: the action taken to get here (or None for the root)
+          descr: the GameDescription, this is used to potentially hash the
+            state.
         """
         self.state = state
         self.parent = parent
         self.action = action
-        self.Q = 0
-        self.count = 0
         self.children = []
+        if descr.state_hash:
+            state_hash = descr.state_hash(state)
+            self._state_hash = state_hash
+            if state_hash not in self.state_table:
+                self.state_table[state_hash] = [0, 0]
+            # otherwise use what's there)
+        else:
+            self._state_hash = None
+            self._Q = 0
+            self._count = 0
         if parent:
             parent.children.append(self)
+
+    @property
+    def Q(self):
+        if self._state_hash:
+            return self.state_table[self._state_hash][0]
+        return self._Q
+
+    @Q.setter
+    def Q(self, value):
+        if self._state_hash:
+            self.state_table[self._state_hash][0] = value
+        else:
+            self._Q = value
+
+    @property
+    def count(self):
+        if self._state_hash:
+            return self.state_table[self._state_hash][1]
+        return self._count
+
+    @count.setter
+    def count(self, value):
+        if self._state_hash:
+            self.state_table[self._state_hash][1] = value
+        else:
+            self._count = value
 
 
 def negamax_backup(node, reward, runs=1, **kwargs):
@@ -65,7 +102,7 @@ class maxdepth_tree_policy(object):
     def __call__(self, node, expand, descr):
         depth = 0
         while depth < self.max_depth and \
-         not descr.terminal_predicate(node.state):
+          not descr.terminal_predicate(node.state):
             actions = descr.legal_actions(node.state)
             if len(node.children) < len(actions):
                 return expand(node, descr)
@@ -114,7 +151,7 @@ def uniform_expand(node, game_descr):
     action = np.random.choice(moves)
     # got action
     child = UCTNode(game_descr.transition_function(node.state, action),
-                    node, action)
+                    node, action, game_descr)
     return child
 
 
@@ -122,7 +159,8 @@ class GameDescription(object):
     """Contains the transition functions etc for the game"""
 
     def __init__(self, transition_function, reward_function,
-                 terminal_predicate, legal_actions, state_eq=None):
+                 terminal_predicate, legal_actions, state_eq=None,
+                 state_hash=None):
         """
         Args:
           transition_function: a function which takes a state and an
@@ -134,6 +172,10 @@ class GameDescription(object):
             True if the state is terminal.
           legal_actions: a function that takes a state and returns a
             list of available actions.
+          state_eq: optional function to compare states, if classic == won't
+            do it.
+          state_hash: optional function to compute some kind of hash of states,
+            if you want to use a transposition table (recommended).
         """
         self.transition_function = transition_function
         self.reward_function = reward_function
@@ -143,6 +185,7 @@ class GameDescription(object):
             self.state_eq = lambda a, b: a == b
         else:
             self.state_eq = state_eq
+        self.state_hash = state_hash
 
 
 class UCTSearch(object):
@@ -192,10 +235,9 @@ class UCTSearch(object):
         """
         start = time.time()
         if not self.last_node:
-            root = UCTNode(state, None, None)
+            root = UCTNode(state, None, None, self.descr)
         else:
-            root = self._get_child(self.last_node, state, self.descr.state_eq)
-            root.parent = None
+            root = self._get_child(self.last_node, state, self.descr)
         logging.info('starting rollouts (%d seconds)', length)
         rollouts = 0
         begin_r = time.time()
@@ -221,6 +263,8 @@ class UCTSearch(object):
                 'something is really quite wrong -- root has no children')
         action_node = self.best_child(root)
         action = action_node.action
+        logging.info('Transposition table has %d elements',
+                      len(UCTNode.state_table))
         logging.info('Got action %s in %f seconds. (average Q: %f, %d visits)',
                      action, time.time() - start,
                      action_node.Q / action_node.count,
@@ -228,15 +272,17 @@ class UCTSearch(object):
         self.last_node = action_node
         return action
 
-    def _get_child(self, node, state, eq):
+    def _get_child(self, node, state, descr):
         """Looks for a child of the given node with an equivalent state"""
         for child in node.children:
             # if state.board == child.state.board:
-            if eq(state, child.state):
+            if descr.state_eq(state, child.state):
                 print('reusing! ({:.1f}/{} = {:.4f})'.format(
                     child.Q, child.count,
                     child.Q/child.count))
                 print('  ({}) children'.format(len(child.children)))
+                # go ahead and del the parent, hoefully gc will pickup
+                # setting parent to None wasn't doing it
                 return child
         # print('could not find')
-        return UCTNode(state, None, None)
+        return UCTNode(state, None, None, descr)

@@ -3,6 +3,7 @@ import time
 import sys
 import logging
 import argparse
+import hashlib
 
 import numpy as np
 import gym
@@ -22,7 +23,7 @@ def _reward(state):
     if not isinstance(state[0], str):
         return board_game.HexEnv.game_finished(state[0]) * ((2 * state[1]) - 1)
     # not a hundred per cent this will be the right way around
-    return 2 * state[1] - 1
+    return  -1  # ?? Need to be a bit careful
 
 
 def _terminal(state):
@@ -51,16 +52,28 @@ def state_equality(a, b):
     return np.all(a[0] == b[0]) and a[1] == b[1]
 
 
+def state_hash(state):
+    """hash a state tuple"""
+    try:
+        m = hashlib.sha1(state[0].view(np.uint8))
+    except AttributeError:
+        # probably a str
+        m = hashlib.sha1(state[0].encode('utf-8'))
+    m.update(bytes(state[1]))
+    return m.digest()
+
+
 def make_description():
     """make a uct.GameDescription describing 9x9 hex"""
     return uct.GameDescription(_transition, _reward, _terminal, _actions,
-                               state_equality)
+                               state_equality, state_hash)
 
 
 def human_text_policy(state):
     """Asks at the terminal for a move. Asks again if the move is illegal"""
     global ENV  # :(
     ENV.render()
+
     def _parse_move(text):
         coords = [int(pos)-1 for pos in text.split(',')]
         return board_game.HexEnv.coordinate_to_action(state, coords)
@@ -116,7 +129,10 @@ def main():
         global ENV
         ENV = env  # this is gross
     observation = env.reset()
-    mcts = uct.UCTSearch(make_description())
+    mcts = uct.UCTSearch(make_description(),
+                         tree_policy=uct.maxdepth_tree_policy(
+                             10000,
+                             uct.choose_ucb(1)))
 
     done = False
     while not done:
