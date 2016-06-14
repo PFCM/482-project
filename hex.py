@@ -23,7 +23,7 @@ def _reward(state):
     if not isinstance(state[0], str):
         return board_game.HexEnv.game_finished(state[0]) * ((2 * state[1]) - 1)
     # not a hundred per cent this will be the right way around
-    return  -1  # ?? Need to be a bit careful
+    return -1  # ?? Need to be a bit careful
 
 
 def _terminal(state):
