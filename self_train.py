@@ -7,6 +7,7 @@ from __future__ import print_function
 import os
 import collections
 import time
+import datetime
 import logging
 
 import numpy as np
@@ -43,7 +44,11 @@ def flip_state(state):
 def sample_action(probabilities):
     """samples an action from given probabilities"""
     # sometimes numerical issues make problems, so do it by hand
-    return np.searchsorted(np.cumsum(probabilities), np.random.sample())
+    if np.random.sample() > 0.05:
+        return np.searchsorted(np.cumsum(probabilities), np.random.sample())
+
+    return np.random.randint(81)
+    
 
 
 class TFSamplePolicy(object):
@@ -97,8 +102,9 @@ def get_hexenv(opponent, num):
     Returns:
         an environment.
     """
+    name = 'PrettyHex9x9-v{}'.format(num)
     gym.envs.register(
-        id='PrettyHex9x9-v{}'.format(num),
+        id=name,
         entry_point='prettyhex:PrettyHexEnv',
         kwargs={
             'player_color': 'black',
@@ -108,7 +114,7 @@ def get_hexenv(opponent, num):
             'board_size': 9
         }
     )
-    return gym.make('PrettyHex9x9-v0')
+    return gym.make(name)
 
 
 def sample_trajectory(black, white, step, render=False):
@@ -139,7 +145,7 @@ def sample_trajectory(black, white, step, render=False):
     return black, white, reward
 
 
-def get_advantages(reward, length, discount=0.9):
+def get_advantages(reward, length, discount=0.999):
     """appropriately discounts the rewards"""
     # first let's figure out the discount factors
     advs = np.ones(length, dtype=np.float32) * discount
@@ -147,11 +153,23 @@ def get_advantages(reward, length, discount=0.9):
     return advs * reward
 
 
+def weight_decay_regularizer(amount):
+    def _reg(t):
+        return amount * tf.nn.l2_loss(t)
+    return _reg
+
+
+def random_policy(state):
+    possibles = gym.envs.board_game.HexEnv.get_possible_actions(state)
+    a = np.random.randint(len(possibles))
+    return possibles[a]
+
+
 def main(_):
     logging.getLogger().setLevel(logging.DEBUG)
     # first we have to get the models
     logging.info('getting model')
-    shape = [[3, 3, 3, 16], [6, 6, 16, 64], 128, 81]
+    shape = [[3, 3, 3, 16]] + [[3, 3, 16, 16]]*1 + [81]
     inputs_pl_t, action_pl, advantage_pl = policy_net.get_placeholders(
         FLAGS.batch_size, [9, 9, 3])
     # get another input placeholder so we can do feedforward one at a time
@@ -161,13 +179,14 @@ def main(_):
     # add a summary of the inputs so we can see what's going on
     tf.image_summary('inputs', inputs_pl_t)
 
-    with tf.variable_scope('model') as scope:
+    with tf.variable_scope('policy_model',
+                           regularizer=weight_decay_regularizer(0.0)) as scope:
         player_logits_train = policy_net.convolutional_inference(
             inputs_pl_t, shape, summarise=True)
         logging.debug('got player train')
         # we will try with a suuper slow ema,
         # but really it should be just a standard running average
-        ema = tf.train.ExponentialMovingAverage(0.99999999999999)
+        ema = tf.train.ExponentialMovingAverage(0.999999999999999999)
         update_averages = ema.apply(tf.trainable_variables())
         logging.debug('got averager')
         scope.reuse_variables()
@@ -187,8 +206,10 @@ def main(_):
     loss_op = policy_net.policy_gradient_loss(player_logits_train, action_pl,
                                               advantage_pl)
     tf.scalar_summary('loss', loss_op)
+    loss_op += tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
     global_step = tf.Variable(0, trainable=False, name='global_step')
-    train_op = policy_net.get_training_op(loss_op, global_step=global_step)
+    train_op = policy_net.get_training_op(loss_op, global_step=global_step,
+                                          learning_rate=0.01)
 
     # make sure the average gets updated
     with tf.control_dependencies([train_op]):
@@ -210,7 +231,9 @@ def main(_):
     logging.info('initialised')
     game_num = 0
     with sess.as_default():
-        summary_writer = tf.train.SummaryWriter(FLAGS.logdir, sess.graph)
+        summary_writer = tf.train.SummaryWriter(
+            FLAGS.logdir+'/{}'.format(datetime.datetime.now().strftime('%d-%m-%y--%H%M')),
+            sess.graph)
         # ready to do some training
         data = collections.deque()
         # now let's sample a few trajectories
@@ -222,9 +245,10 @@ def main(_):
                 rl_player = TFSamplePolicy(
                     player_logits_play, inputs_pl_p, keep_actions=True,
                     session=sess, invert_state=not rl_is_black)
-                av_player = TFSamplePolicy(
-                    opponent_logits_play, inputs_pl_p, keep_actions=False,
-                    session=sess, invert_state=rl_is_black)
+                #av_player = TFSamplePolicy(
+                #    opponent_logits_play, inputs_pl_p, keep_actions=False,
+                #    session=sess, invert_state=rl_is_black)
+                av_player = random_policy
                 player = rl_player if rl_is_black else av_player
                 opponent = av_player if rl_is_black else rl_player
                 # play it out

@@ -150,7 +150,7 @@ def policy_gradient_loss(logits, actions, rewards):
         probs = tf.gather(tf.reshape(log_probs, [-1]), idx_flattened)
         return -tf.squeeze(tf.matmul(tf.expand_dims(probs, 1),
                                      tf.expand_dims(rewards, 1),
-                                     transpose_a=True))
+                                     transpose_a=True)) / prob_shape[0]
 
 
 def get_placeholders(batch_size, image_size):
@@ -168,7 +168,7 @@ def get_placeholders(batch_size, image_size):
     return inputs, actions, advantages
 
 
-def get_training_op(loss, learning_rate=0.0001,
+def get_training_op(loss, learning_rate=0.01,
                     collection=None,
                     global_step=None):
     """Gets an op that runs RMSProp on the given collection of trainable
@@ -184,7 +184,7 @@ def get_training_op(loss, learning_rate=0.0001,
     Returns:
         an op that runs a step of training.
     """
-    opt = tf.train.RMSPropOptimizer(learning_rate)
+    opt = tf.train.AdamOptimizer(learning_rate)
     return opt.minimize(loss, global_step=global_step, var_list=collection)
 
 
