@@ -44,11 +44,10 @@ def flip_state(state):
 def sample_action(probabilities):
     """samples an action from given probabilities"""
     # sometimes numerical issues make problems, so do it by hand
-    if np.random.sample() > 0.05:
+    if np.random.sample() > 0.1:
         return np.searchsorted(np.cumsum(probabilities), np.random.sample())
 
     return np.random.randint(81)
-    
 
 
 class TFSamplePolicy(object):
@@ -180,13 +179,13 @@ def main(_):
     tf.image_summary('inputs', inputs_pl_t)
 
     with tf.variable_scope('policy_model',
-                           regularizer=weight_decay_regularizer(0.0)) as scope:
+                           regularizer=weight_decay_regularizer(0.001)) as scope:
         player_logits_train = policy_net.convolutional_inference(
-            inputs_pl_t, shape, summarise=True)
+            inputs_pl_t, shape, summarise=True, dropout=0.5)
         logging.debug('got player train')
         # we will try with a suuper slow ema,
         # but really it should be just a standard running average
-        ema = tf.train.ExponentialMovingAverage(0.999999999999999999)
+        ema = tf.train.ExponentialMovingAverage(0.9999999999)
         update_averages = ema.apply(tf.trainable_variables())
         logging.debug('got averager')
         scope.reuse_variables()
@@ -232,7 +231,8 @@ def main(_):
     game_num = 0
     with sess.as_default():
         summary_writer = tf.train.SummaryWriter(
-            FLAGS.logdir+'/{}'.format(datetime.datetime.now().strftime('%d-%m-%y--%H%M')),
+            FLAGS.logdir+'/{}'.format(datetime.datetime.now().strftime(
+                '%d-%m-%y--%H%M')),
             sess.graph)
         # ready to do some training
         data = collections.deque()
@@ -245,10 +245,10 @@ def main(_):
                 rl_player = TFSamplePolicy(
                     player_logits_play, inputs_pl_p, keep_actions=True,
                     session=sess, invert_state=not rl_is_black)
-                #av_player = TFSamplePolicy(
-                #    opponent_logits_play, inputs_pl_p, keep_actions=False,
-                #    session=sess, invert_state=rl_is_black)
-                av_player = random_policy
+                av_player = TFSamplePolicy(
+                    opponent_logits_play, inputs_pl_p, keep_actions=False,
+                    session=sess, invert_state=rl_is_black)
+                # av_player = random_policy
                 player = rl_player if rl_is_black else av_player
                 opponent = av_player if rl_is_black else rl_player
                 # play it out
@@ -289,6 +289,7 @@ def main(_):
             summary_writer.add_summary(summaries, global_step.eval())
             saver.save(sess, FLAGS.savedir, global_step=global_step.eval())
             logging.debug('saved model and summaries')
+
 
 if __name__ == '__main__':
     tf.app.run()

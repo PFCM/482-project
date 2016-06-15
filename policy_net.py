@@ -45,7 +45,7 @@ def _conv_layer(input_var, shape, stride, name, summarise=True, averager=None):
         if not averager:
             filters = tf.get_variable('weights', shape)
             biases = tf.get_variable('biases', [shape[-1]],
-                                     initializer=tf.constant_initializer(0.1))
+                                     initializer=tf.constant_initializer(0.0))
         else:
             filters = averager.average(tf.get_variable('weights', shape))
             biases = averager.average(tf.get_variable('biases', [shape[-1]]))
@@ -78,7 +78,7 @@ def _fc_layer(input_var, size, name, nonlin=tf.nn.relu, summarise=True,
             weights = tf.get_variable('weights', shape=[input_dim, size],
                                       trainable=True)
             biases = tf.get_variable('biases', shape=[size],
-                                     initializer=tf.constant_initializer(0.1),
+                                     initializer=tf.constant_initializer(0.0),
                                      trainable=True)
         else:  # get shadow variables from the moving average
             weights = averager.average(
@@ -91,7 +91,8 @@ def _fc_layer(input_var, size, name, nonlin=tf.nn.relu, summarise=True,
         return activation
 
 
-def convolutional_inference(input_var, shape, averager=None, summarise=False):
+def convolutional_inference(input_var, shape, averager=None, summarise=False,
+                            dropout=1.0):
     """Build the feedforward part of the model minus the final softmax"""
 
     layer_input = input_var
@@ -121,6 +122,8 @@ def convolutional_inference(input_var, shape, averager=None, summarise=False):
                                     averager=averager,
                                     nonlin=nonlin,
                                     summarise=summarise)
+        if dropout != 1.0 and i < len(shape)-1:
+            layer_input = tf.nn.dropout(layer_input, keep_prob=dropout)
     return layer_input  # the final one is in fact the output
 
 
