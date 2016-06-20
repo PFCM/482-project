@@ -1,2 +1,1 @@
-gym[board_game]
-deco
+git+https://github.com/pfcm/gym[board_game]

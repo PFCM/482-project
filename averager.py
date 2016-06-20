@@ -36,10 +36,13 @@ class RunningAverage(object):
                 count = tf.get_variable(
                     name+'_count', dtype=tf.float32,
                     initializer=tf.constant_initializer(0.0),
-                    shape=[])
+                    shape=[], trainable=False)
                 shadow = tf.get_variable(
                     name+'_shadow', dtype=var.dtype,
-                    initializer=var.initialized_value())
+                    initializer=var.initialized_value(),
+                    collections=[tf.GraphKeys.MOVING_AVERAGE_VARIABLES,
+                                 tf.GraphKeys.VARIABLES],
+                    trainable=False)
                 # now make the update ops
                 # increase the count
                 count_update = tf.assign_add(count, 1.0)
