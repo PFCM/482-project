@@ -56,7 +56,7 @@ def _conv_layer(input_var, shape, stride, name, summarise=True, averager=None):
         conv = tf.nn.relu(conv, name=scope.name)
         if summarise:
             _activation_summary(conv)
-            _filter_summary(filters)
+            #_filter_summary(filters)
         return conv
 
 
@@ -151,9 +151,7 @@ def policy_gradient_loss(logits, actions, rewards):
         prob_shape = log_probs.get_shape().as_list()
         idx_flattened = tf.range(0, prob_shape[0]) * prob_shape[1] + actions
         probs = tf.gather(tf.reshape(log_probs, [-1]), idx_flattened)
-        return -tf.squeeze(tf.matmul(tf.expand_dims(probs, 1),
-                                     tf.expand_dims(rewards, 1),
-                                     transpose_a=True)) / prob_shape[0]
+        return -tf.reduce_mean(probs * rewards)
 
 
 def get_placeholders(batch_size, image_size):
@@ -187,7 +185,7 @@ def get_training_op(loss, learning_rate=0.01,
     Returns:
         an op that runs a step of training.
     """
-    opt = tf.train.AdamOptimizer(learning_rate)
+    opt = tf.train.RMSPropOptimizer(learning_rate)
     return opt.minimize(loss, global_step=global_step, var_list=collection)
 
 

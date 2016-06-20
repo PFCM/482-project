@@ -16,6 +16,7 @@ import tensorflow as tf
 import gym
 
 import policy_net
+from averager import RunningAverage
 
 flags = tf.app.flags
 flags.DEFINE_string('logdir', 'logs', 'where the summaries for tensorboard go')
@@ -41,10 +42,10 @@ def flip_state(state):
     return state
 
 
-def sample_action(probabilities):
+def sample_action(probabilities, epsilon):
     """samples an action from given probabilities"""
     # sometimes numerical issues make problems, so do it by hand
-    if np.random.sample() > 0.1:
+    if np.random.sample() > epsilon:
         return np.searchsorted(np.cumsum(probabilities), np.random.sample())
 
     return np.random.randint(81)
@@ -57,7 +58,7 @@ class TFSamplePolicy(object):
     """
 
     def __init__(self, logit_var, input_pl, session=None, invert_state=False,
-                 keep_actions=False):
+                 keep_actions=False, epsilon=0.0):
         """Gets ready to go.
 
         Args:
@@ -78,6 +79,7 @@ class TFSamplePolicy(object):
             self.trajectory = []
         else:
             self.trajectory = None
+        self.epsilon = epsilon
 
     def __call__(self, state):
         """produces a move from a state"""
@@ -86,14 +88,25 @@ class TFSamplePolicy(object):
             state = flip_state(state)
         likelihoods, = self.session.run(
             self.probs, {self.input: state.reshape((1, 9, 9, 3))})
-        move = sample_action(likelihoods)
+        move = sample_action(likelihoods, self.epsilon)
+        # protect from losing all the time due to illegal moves
+        if not gym.envs.board_game.HexEnv.valid_move(state, move):
+            if np.random.sample() > 0.05:
+                logging.debug('illegal move, choosing at random')
+                moves = gym.envs.board_game.HexEnv.get_possible_actions(state)
+                if len(moves):
+                    move = np.random.choice(moves)
+                else:
+                    move = 0  # must be illegal, so will lose
+            else:
+                logging.debug('illegal move, losing')
         if self.trajectory is not None:
             self.trajectory.append((state, move))
         return move
 
 
 def get_hexenv(opponent, num):
-    """Gets a gym env to lay hex with the opponent installed.
+    """Gets a gym env to play hex with the opponent installed.
 
     Args:
         opponent: the opponent policy.
@@ -101,19 +114,24 @@ def get_hexenv(opponent, num):
     Returns:
         an environment.
     """
-    name = 'PrettyHex9x9-v{}'.format(num)
-    gym.envs.register(
-        id=name,
-        entry_point='prettyhex:PrettyHexEnv',
-        kwargs={
-            'player_color': 'black',
-            'observation_type': 'numpy3c',
-            'opponent': opponent,
-            'illegal_move_mode': 'lose',  # try learn not to
-            'board_size': 9
-        }
-    )
-    return gym.make(name)
+    # some gross hacking
+    try:
+        get_hexenv.env.opponent = opponent
+    except AttributeError:
+        name = 'PrettyHex9x9-v{}'.format(num)
+        gym.envs.register(
+            id=name,
+            entry_point='prettyhex:PrettyHexEnv',
+            kwargs={
+                'player_color': 'black',
+                'observation_type': 'numpy3c',
+                'opponent': opponent,
+                'illegal_move_mode': 'lose',  # try learn not to
+                'board_size': 9
+                }
+            )
+        get_hexenv.env = gym.make(name)
+    return get_hexenv.env
 
 
 def sample_trajectory(black, white, step, render=False):
@@ -144,12 +162,12 @@ def sample_trajectory(black, white, step, render=False):
     return black, white, reward
 
 
-def get_advantages(reward, length, discount=0.999):
+def get_advantages(reward, length, discount=0.9):
     """appropriately discounts the rewards"""
     # first let's figure out the discount factors
     advs = np.ones(length, dtype=np.float32) * discount
     advs = np.power(advs, np.arange(length, 0, -1, dtype=np.float32))
-    return advs * reward
+    return advs * -reward
 
 
 def weight_decay_regularizer(amount):
@@ -168,7 +186,7 @@ def main(_):
     logging.getLogger().setLevel(logging.DEBUG)
     # first we have to get the models
     logging.info('getting model')
-    shape = [[3, 3, 3, 16]] + [[3, 3, 16, 16]]*1 + [81]
+    shape = [[3, 3, 3, 32]] + [[3, 3, 32, 32]]*1 + [256, 81]
     inputs_pl_t, action_pl, advantage_pl = policy_net.get_placeholders(
         FLAGS.batch_size, [9, 9, 3])
     # get another input placeholder so we can do feedforward one at a time
@@ -179,21 +197,20 @@ def main(_):
     tf.image_summary('inputs', inputs_pl_t)
 
     with tf.variable_scope('policy_model',
-                           regularizer=weight_decay_regularizer(0.001)) as scope:
+                           regularizer=weight_decay_regularizer(0.01)) as scope:
         player_logits_train = policy_net.convolutional_inference(
             inputs_pl_t, shape, summarise=True, dropout=0.5)
         logging.debug('got player train')
-        # we will try with a suuper slow ema,
-        # but really it should be just a standard running average
-        ema = tf.train.ExponentialMovingAverage(0.9999999999)
-        update_averages = ema.apply(tf.trainable_variables())
+        # get a running average of the params
+        avger = RunningAverage()
+        update_averages = avger.apply(tf.trainable_variables())
         logging.debug('got averager')
         scope.reuse_variables()
         player_logits_play = policy_net.convolutional_inference(
             inputs_pl_p, shape)
         logging.debug('got player')
         opponent_logits_play = policy_net.convolutional_inference(
-            inputs_pl_p, shape, averager=ema)
+            inputs_pl_p, shape, averager=avger)
         logging.debug('got average model')
         # summarise the outputs so we can check in on what it thinks is good
         tf.image_summary(
@@ -208,11 +225,11 @@ def main(_):
     loss_op += tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
     global_step = tf.Variable(0, trainable=False, name='global_step')
     train_op = policy_net.get_training_op(loss_op, global_step=global_step,
-                                          learning_rate=0.01)
+                                          learning_rate=0.0001)
 
     # make sure the average gets updated
     with tf.control_dependencies([train_op]):
-        train_op = tf.group(update_averages)
+        train_op = tf.group(*update_averages)
     logging.info('got model')
     logging.debug('geting misc ops')
     # get set up to save models
@@ -256,6 +273,7 @@ def main(_):
                     player, opponent, game_num, render=False)
                 # calculate the advantages
                 reward = (reward * -1) if not rl_is_black else reward
+                logging.debug('  reward: %f', reward)
                 advantages = get_advantages(reward, len(rl_player.trajectory))
                 # flatten out the tuples a little bit
                 trajectory = [(s, a, r)
