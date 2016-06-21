@@ -30,6 +30,9 @@ flags.DEFINE_string('opponent', 'random', 'one of [random, self] whether to '
                     'play a running average of oneself or a random opponent')
 flags.DEFINE_string('loadpath', '', 'where to look for a model. If empty, '
                     'then initialize fresh')
+flags.DEFINE_float('learning_rate', 0.0001, 'learning rate for optimizer')
+flags.DEFINE_float('opponent_epsilon', 0.01, 'chance of the opponent (in case of'
+                   ' self play only) taking a completely random move.')
 FLAGS = flags.FLAGS
 
 
@@ -181,7 +184,7 @@ def get_advantages(reward, length, discount=1.0):
     # first let's figure out the discount factors
     advs = np.ones(length, dtype=np.float32) * discount
     advs = np.power(advs, np.arange(length, 0, -1, dtype=np.float32))
-    return advs * -reward
+    return advs * reward
 
 
 def weight_decay_regularizer(amount):
@@ -296,7 +299,7 @@ def main(_):
                 if FLAGS.opponent == 'self':
                     av_player = TFSamplePolicy(
                         opponent_logits_play, inputs_pl_p, keep_actions=False,
-                        session=sess, invert_state=rl_is_black, epsilon=0.05)
+                        session=sess, invert_state=rl_is_black, epsilon=0.0)
                 else:
                     av_player = random_policy
                 player = rl_player if rl_is_black else av_player
