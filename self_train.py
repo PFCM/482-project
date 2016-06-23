@@ -98,12 +98,17 @@ class TFSamplePolicy(object):
     def __call__(self, state):
         """produces a move from a state"""
         state = state.copy()
+        # get the moves before we flip it
+        moves = gym.envs.board_game.HexEnv.get_possible_actions(state)
+        
         if self.invert_state:
             state = flip_state(state)
         likelihoods, = self.session.run(
             self.probs, {self.input: state.reshape((1, 9, 9, 3))})
+        if self.invert_state:
+            # then we will also have to flip the probabilities
+            likelihoods = likelihoods.reshape((9,9)).transpose().flatten()
 
-        moves = gym.envs.board_game.HexEnv.get_possible_actions(state)
         move = sample_action(likelihoods, self.epsilon, moves)
         # protect from losing all the time due to illegal moves
         # if not gym.envs.board_game.HexEnv.valid_move(state, move):
@@ -244,7 +249,7 @@ def main(_):
     loss_op += tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
     global_step = tf.Variable(0, trainable=False, name='global_step')
     train_op = policy_net.get_training_op(loss_op, global_step=global_step,
-                                          learning_rate=0.0001)
+                                          learning_rate=FLAGS.learning_rate)
 
     # make sure the average gets updated
     with tf.control_dependencies([train_op]):
@@ -269,7 +274,10 @@ def main(_):
         # the easiest thing to do is initialize the lot and then restore
         # which is double work but also actually possible.
         sess.run(tf.initialize_all_variables())
-        path = tf.train.latest_checkpoint(FLAGS.loadpath)
+        if os.path.isdir(FLAGS.loadpath):
+            path = tf.train.latest_checkpoint(FLAGS.loadpath)
+        else:
+            path = FLAGS.loadpath
         saver.restore(sess, path)
         logging.info('restored from %s', path)
     else:
@@ -299,7 +307,8 @@ def main(_):
                 if FLAGS.opponent == 'self':
                     av_player = TFSamplePolicy(
                         opponent_logits_play, inputs_pl_p, keep_actions=False,
-                        session=sess, invert_state=rl_is_black, epsilon=0.0)
+                        session=sess, invert_state=rl_is_black,
+                        epsilon=FLAGS.opponent_epsilon)
                 else:
                     av_player = random_policy
                 player = rl_player if rl_is_black else av_player
@@ -343,9 +352,12 @@ def main(_):
                  advantage_pl: advantages})
             print('\r({}): {}'.format(global_step.eval(), loss))
             # save the model and the summaries
-            summary_writer.add_summary(summaries, global_step.eval())
-            saver.save(sess, FLAGS.savepath, global_step=global_step.eval())
-            logging.debug('saved model and summaries')
+            step = global_step.eval()
+            if step % 100 == 0:
+                # no point doing this so often
+                summary_writer.add_summary(summaries, step)
+                saver.save(sess, FLAGS.savepath, global_step=step)
+                logging.debug('saved model and summaries')
 
 
 if __name__ == '__main__':
