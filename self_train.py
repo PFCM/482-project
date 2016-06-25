@@ -62,7 +62,7 @@ def sample_action(probabilities, epsilon, available_set=None):
     
     if available_set:
         return np.random.choice(available_set)
-    return 82
+    return 81
 
 
 class TFSamplePolicy(object):
