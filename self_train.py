@@ -9,6 +9,7 @@ import collections
 import time
 import datetime
 import logging
+import shutil
 
 import numpy as np
 import tensorflow as tf
@@ -352,10 +353,13 @@ def main(_):
                  advantage_pl: advantages})
             step = global_step.eval()
             if step % 50:
-                print('\r({}): {} [{} games, {} average reward]'.format(
-                    step, loss, game_num,
-                    total_reward/game_num),
-                      end='')
+                s = shutil.get_terminal_size((80, 20))
+                print('\r{:¤^{}}'.format(
+                    '({}): {} [{} games, {:.4f} average reward]'.format(
+                        step, loss, game_num,
+                        total_reward/game_num),
+                     s.columns),
+                end='')
             # save the model and the summaries
             if step % 100 == 0:
                 # no point doing this so often
