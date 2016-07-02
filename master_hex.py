@@ -7,6 +7,8 @@ import logging
 import gym
 
 import prettyhex
+import hex as hexgame
+import uct
 
 
 # the list of players we are prepared to accomodate
@@ -20,12 +22,29 @@ PLAYERS = [
 ]
 
 
-def get_player(player, colour):
+def classic_uct_policy(max_depth=100000, search_time=1.0, colour=0):
+    """makes a callable that does uct stuff with given params."""
+    mcts = uct.UCTSearch(hexgame.make_description(),
+                         tree_policy=uct.maxdepth_tree_policy(
+                             max_depth, uct.choose_ucb(1)))
+
+    def _get_uct_move(state):
+        return mcts.search((state,
+                            gym.envs.board_game.HexEnv.__dict__[colour]),
+                           search_time)
+
+    return _get_uct_move
+
+
+def get_player(player, colour, args):
     """Gets a callable that returns a move, finding it in the appropriate
     place."""
     if player == 'human':
-        from hex import human_text_policy
-        return human_text_policy
+        return hexgame.human_text_policy
+    elif player == 'uct':
+        return classic_uct_policy(max_depth=args.tree_depth,
+                                  search_time=args.search_time,
+                                  colour=colour)
     else:
         raise ValueError('I do not know this player: {}'.format(player))
 
@@ -40,6 +59,12 @@ def get_args():
                         choices=PLAYERS)
     parser.add_argument('--illegal_move_mode', default='raise', type=str,
                         choices=['raise', 'tie', 'lose'])
+    parser.add_argument('--search_time', default=1.0, type=float,
+                        help='How long to search for, for those that will '
+                        'just go until stopped.')
+    parser.add_argument('--tree_depth', default=1000000, type=int,
+                        help='For the tree searches, how far down to expand '
+                        'the tree before going straight to rollouts.')
     return parser.parse_args()
 
 
@@ -64,10 +89,13 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
 
     args = get_args()
-    black_player = get_player(args.black, 'BLACK')
-    white_player = get_player(args.white, 'WHITE')
+    black_player = get_player(args.black, 'BLACK', args)
+    white_player = get_player(args.white, 'WHITE', args)
     logging.info('Setting up a game, %s playing %s', args.black, args.white)
     env = get_environment(black_player, args.illegal_move_mode)
+
+    hexgame.ENV = env
+
     obs = env.reset()
 
     done = False
@@ -77,6 +105,10 @@ def main():
 
         observation, reward, done, info = env.step(white_action)
 
+    if reward == 1.0:
+        print('Black won')
+    else:
+        print('White won')
 
 
 if __name__ == '__main__':
