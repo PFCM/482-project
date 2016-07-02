@@ -27,6 +27,43 @@ PLAYERS = [
 ]
 
 
+def policy_net_rollout(policy_dict):
+    """Gets a callable to do the rollout using two policies (one per player)
+    """
+    def _rollout(start_node, game_descr):
+        """actually roll out"""
+        state = start_node.state
+        while not game_descr.terminal_predicate(state):
+            action = policy_dict[state[1]](state[0])
+            state = game_descr.transition_function(state, action)
+        return game_descr.reward_function(state)
+
+    return _rollout
+
+
+def mcts_policy_net(model_path, colour, max_depth=100000, search_time=1.0):
+    """callable that runs mcts using the policy net during rollouts"""
+    # first up we're going to have to set up our fancy rollouts
+    black_policy = get_full_policy_net(model_path, 'BLACK')
+    white_policy = get_full_policy_net(model_path, 'WHITE')
+    policy_dict = {
+        gym.envs.board_game.HexEnv.BLACK: black_policy,
+        gym.envs.board_game.HexEnv.WHITE: white_policy
+    }
+
+    mcts = uct.UCTSearch(hexgame.make_description(),
+                         tree_policy=uct.maxdepth_tree_policy(
+                            max_depth, uct.choose_ucb(1)),
+                         default_policy=policy_net_rollout(policy_dict))
+
+    def _get_move(state):
+        return mcts.search((state,
+                            gym.envs.board_game.HexEnv.__dict__[colour]),
+                           search_time)
+
+    return _get_move
+
+
 def classic_uct_policy(max_depth=100000, search_time=1.0, colour=0,
                        do_hash=True):
     """makes a callable that does uct stuff with given params."""
@@ -98,6 +135,10 @@ def get_player(player, colour, args):
                                   search_time=args.search_time,
                                   colour=colour,
                                   do_hash=False)
+    elif player == 'mcts-policy-net':
+        return mcts_policy_net(args.policy_net_self_path, colour,
+                               max_depth=args.tree_depth,
+                               search_time=args.search_time)
     elif player == 'policy-net-random':
         # the policy net bootstrap
         return get_full_policy_net(args.policy_net_random_path, colour)

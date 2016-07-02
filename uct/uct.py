@@ -259,10 +259,10 @@ class UCTSearch(object):
             rollouts += 1
             # print('\r{} rollouts {}s each'.format(rollouts, av_time), end='')
             if rollouts % 100 == 0:
-                # print('\r{} rollouts ({:.3f}s)'.format(
-                #     rollouts, (time.time()-begin_r)/100), end='')
+                print('\r{} rollouts ({:.3f}s)'.format(
+                      rollouts, (time.time()-begin_r)/100), end='')
                 begin_r = time.time()
-        # print('\r{} rollouts'.format(rollouts))
+        print('\r{} rollouts'.format(rollouts))
         if len(root.children) == 0:
             logging.info(
                 'Root has no children, unclear if this should ever happen')
