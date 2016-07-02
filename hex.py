@@ -75,7 +75,7 @@ def human_text_policy(state):
     ENV.render()
 
     def _parse_move(text):
-        coords = [int(pos)-1 for pos in text.split(',')]
+        coords = [int(pos.strip())-1 for pos in text.split(',')]
         return board_game.HexEnv.coordinate_to_action(state, coords)
 
     a = _parse_move(input('Enter a move: '))
