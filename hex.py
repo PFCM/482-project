@@ -63,10 +63,10 @@ def state_hash(state):
     return m.digest()
 
 
-def make_description():
+def make_description(do_hash=True):
     """make a uct.GameDescription describing 9x9 hex"""
     return uct.GameDescription(_transition, _reward, _terminal, _actions,
-                               state_equality, state_hash)
+                               state_equality, state_hash if do_hash else None)
 
 
 def human_text_policy(state):
@@ -75,7 +75,10 @@ def human_text_policy(state):
     ENV.render()
 
     def _parse_move(text):
-        coords = [int(pos)-1 for pos in text.split(',')]
+        try:
+            coords = [int(pos.strip())-1 for pos in text.split(',')]
+        except:
+            return -1
         return board_game.HexEnv.coordinate_to_action(state, coords)
 
     a = _parse_move(input('Enter a move: '))

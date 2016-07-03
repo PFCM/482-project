@@ -60,7 +60,7 @@ def sample_action(probabilities, epsilon, available_set=None):
         probabilities /= probabilities.sum()
     if np.random.sample() > epsilon:
         return np.searchsorted(np.cumsum(probabilities), np.random.sample())
-    
+
     if available_set:
         return np.random.choice(available_set)
     return 81
@@ -101,7 +101,7 @@ class TFSamplePolicy(object):
         state = state.copy()
         # get the moves before we flip it
         moves = gym.envs.board_game.HexEnv.get_possible_actions(state)
-        
+
         if self.invert_state:
             state = flip_state(state)
         likelihoods, = self.session.run(
@@ -140,6 +140,7 @@ def get_hexenv(opponent, num):
     # some gross hacking
     try:
         get_hexenv.env.opponent = opponent
+        get_hexenv.env.opponent_policy = opponent
     except AttributeError:
         name = 'PrettyHex9x9-v{}'.format(num)
         gym.envs.register(
@@ -205,6 +206,10 @@ def random_policy(state):
         a = np.random.randint(len(possibles))
         return possibles[a]
     return 81
+
+
+def canonical_shape():
+    return [[3, 3, 3, 64]] + [[3, 3, 64, 64]]*3 + [256, 81]
 
 
 def main(_):
@@ -296,7 +301,7 @@ def main(_):
         rl_is_black = True
         total_reward = 0.0  # for logging
         max_step = int(global_step.eval()) + FLAGS.max_updates
-        logging.info('starting with a model that has had %d updates', 
+        logging.info('starting with a model that has had %d updates',
                      global_step.eval())
         while global_step.eval() < max_step:
             while len(data) < FLAGS.batch_size:

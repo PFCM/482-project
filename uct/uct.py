@@ -160,7 +160,7 @@ class GameDescription(object):
 
     def __init__(self, transition_function, reward_function,
                  terminal_predicate, legal_actions, state_eq=None,
-                 state_hash=None):
+                 state_hash=None, resign_move=81):
         """
         Args:
           transition_function: a function which takes a state and an
@@ -176,6 +176,7 @@ class GameDescription(object):
             do it.
           state_hash: optional function to compute some kind of hash of states,
             if you want to use a transposition table (recommended).
+          resign_move: if the game has a special move to bail.
         """
         self.transition_function = transition_function
         self.reward_function = reward_function
@@ -186,6 +187,7 @@ class GameDescription(object):
         else:
             self.state_eq = state_eq
         self.state_hash = state_hash
+        self.resign_move = resign_move
 
 
 class UCTSearch(object):
@@ -233,12 +235,15 @@ class UCTSearch(object):
         Return:
           an action to take
         """
+        if self.descr.terminal_predicate(state):
+            logging.debug('searching from a terminal state, will not get far')
+            return self.descr.resign_move
         start = time.time()
         if not self.last_node:
             root = UCTNode(state, None, None, self.descr)
         else:
             root = self._get_child(self.last_node, state, self.descr)
-        logging.info('starting rollouts (%d seconds)', length)
+        logging.debug('starting rollouts (%d seconds)', length)
         rollouts = 0
         begin_r = time.time()
         while time.time() < (start + length):
@@ -255,20 +260,22 @@ class UCTSearch(object):
             # print('\r{} rollouts {}s each'.format(rollouts, av_time), end='')
             if rollouts % 100 == 0:
                 print('\r{} rollouts ({:.3f}s)'.format(
-                    rollouts, (time.time()-begin_r)/100), end='')
+                      rollouts, (time.time()-begin_r)/100), end='',
+                      flush=True)
                 begin_r = time.time()
         print('\r{} rollouts'.format(rollouts))
         if len(root.children) == 0:
-            raise Exception(
-                'something is really quite wrong -- root has no children')
+            logging.info(
+                'Root has no children, unclear if this should ever happen')
         action_node = self.best_child(root)
         action = action_node.action
-        logging.info('Transposition table has %d elements',
-                     len(UCTNode.state_table))
-        logging.info('Got action %s in %f seconds. (average Q: %f, %d visits)',
-                     action, time.time() - start,
-                     action_node.Q / action_node.count,
-                     action_node.count)
+        logging.debug('Transposition table has %d elements',
+                      len(UCTNode.state_table))
+        logging.debug('Got action %s in %f seconds. '
+                      '(average Q: %f, %d visits)',
+                      action, time.time() - start,
+                      action_node.Q / action_node.count,
+                      action_node.count)
         self.last_node = action_node
         return action
 
@@ -277,10 +284,10 @@ class UCTSearch(object):
         for child in node.children:
             # if state.board == child.state.board:
             if descr.state_eq(state, child.state):
-                print('reusing! ({:.1f}/{} = {:.4f})'.format(
+                logging.info('reusing! ({:.1f}/{} = {:.4f})'.format(
                     child.Q, child.count,
                     child.Q/child.count))
-                print('  ({}) children'.format(len(child.children)))
+                logging.info('  ({}) children'.format(len(child.children)))
                 # go ahead and del the parent, hoefully gc will pickup
                 # setting parent to None wasn't doing it
                 return child
