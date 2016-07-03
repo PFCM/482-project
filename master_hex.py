@@ -23,7 +23,8 @@ PLAYERS = [
     'uct-nohash',
     'policy-net-random',
     'policy-net-tuned',
-    'mcts-policy-net'
+    'mcts-policy-net-random',
+    'mcts-policy-net-tuned'
 ]
 
 
@@ -108,6 +109,8 @@ def get_full_policy_net(model_path, colour):
                 logits = policy_net.convolutional_inference(
                     input_pl, self_train.canonical_shape())
             saver = tf.train.Saver(tf.trainable_variables())
+            if not os.path.exists(model_path):
+                raise ValueError('`{}` does not exist'.format(model_path))
             if os.path.isdir(model_path):
                 model_path = tf.train.latest_checkpoint(model_path)
             logging.info('Attempting to restore policy net from %s',
@@ -135,8 +138,12 @@ def get_player(player, colour, args):
                                   search_time=args.search_time,
                                   colour=colour,
                                   do_hash=False)
-    elif player == 'mcts-policy-net':
+    elif player == 'mcts-policy-net-tuned':
         return mcts_policy_net(args.policy_net_self_path, colour,
+                               max_depth=args.tree_depth,
+                               search_time=args.search_time)
+    elif player == 'mcts-policy-net-random':
+        return mcts_policy_net(args.policy_net_random_path, colour,
                                max_depth=args.tree_depth,
                                search_time=args.search_time)
     elif player == 'policy-net-random':
@@ -178,6 +185,8 @@ def get_args():
 
     parser.add_argument('--policy_net_random_path', type=str)
     parser.add_argument('--policy_net_self_path', type=str)
+    parser.add_argument('--result_path', type=str, default='')
+    parser.add_argument('--exit_result', action='store_true', default=False)
     return parser.parse_args()
 
 
@@ -185,6 +194,7 @@ def get_environment(opponent, illegal_move_mode):
     """Gets an environment with the appropriate opponent installed"""
     try:
         get_environment.env.opponent = opponent
+        get_environment.env.opponent_policy = opponent
     except AttributeError:
         gym.envs.register(
             id='PrettyHexEnv-v0',
@@ -201,8 +211,11 @@ def get_environment(opponent, illegal_move_mode):
     return get_environment.env
 
 
-def print_results(p1_wins, p2_wins, games):
+def print_results(p1_wins, p2_wins, games, path):
     """make some pretty output"""
+    if path:
+        # we're about to quit so who cares
+        sys.stdout = open(path, 'w')
     twidth = shutil.get_terminal_size().columns
     print('~'*twidth)
     print('~'*twidth)
@@ -237,12 +250,12 @@ def main():
         player_2 = get_player(args.player2, p2_colour, args)
 
         black_player = player_1 if p1_colour == 'BLACK' else player_2
-        white_player = player_2 if p1_colour == 'BLACK' else player_2
+        white_player = player_2 if p1_colour == 'BLACK' else player_1
 
         logging.info('Player 1 (%s) is %s', args.player1, p1_colour)
         logging.info('Player 2 (%s) is %s', args.player2, p2_colour)
 
-        env = get_environment(black_player, args.illegal_move_mode)
+        env = get_environment(white_player, args.illegal_move_mode)
 
         hexgame.ENV = env
 
@@ -252,9 +265,9 @@ def main():
         while not done:
             if args.render:
                 env.render()
-            white_action = white_player(obs)
+            black_action = black_player(obs)
 
-            observation, reward, done, info = env.step(white_action)
+            observation, reward, done, info = env.step(black_action)
 
         if reward == 1.0:
             if p1_colour == 'BLACK':
@@ -272,7 +285,14 @@ def main():
                 winner = 'player 1'
         logging.info('%s is the winner', winner)
 
-    print_results(p1_wins, p2_wins, args.num_games)
+    print_results(p1_wins, p2_wins, args.num_games, args.result_path)
+
+    if args.exit_result:
+        if p1_wins > p2_wins:
+            sys.exit(2)
+        if p2_wins > p1_wins:
+            sys.exit(3)
+        sys.exit(0)
 
 
 if __name__ == '__main__':
