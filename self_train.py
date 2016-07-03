@@ -139,6 +139,7 @@ def get_hexenv(opponent, num):
     # some gross hacking
     try:
         get_hexenv.env.opponent = opponent
+        get_hexenv.env.opponent_policy = opponent
     except AttributeError:
         name = 'PrettyHex9x9-v{}'.format(num)
         gym.envs.register(
