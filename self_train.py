@@ -9,6 +9,7 @@ import collections
 import time
 import datetime
 import logging
+import shutil
 
 import numpy as np
 import tensorflow as tf
@@ -212,7 +213,7 @@ def canonical_shape():
 
 
 def main(_):
-    logging.getLogger().setLevel(logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     # first we have to get the models
     logging.info('getting model')
     shape = [[3, 3, 3, 64]] + [[3, 3, 64, 64]]*3 + [256, 81]
@@ -304,7 +305,7 @@ def main(_):
                      global_step.eval())
         while global_step.eval() < max_step:
             while len(data) < FLAGS.batch_size:
-                logging.info('not enough data to train, playing')
+                logging.debug('not enough data to train, playing')
                 # then we are going to have to get some
                 rl_player = TFSamplePolicy(
                     player_logits_play, inputs_pl_p, keep_actions=True,
@@ -332,9 +333,9 @@ def main(_):
                               for r, (s, a)
                               in zip(advantages, rl_player.trajectory)]
                 data.extend(trajectory)
-                logging.info('game %d complete.', game_num)
+                logging.debug('game %d complete.', game_num)
                 game_num += 1
-                logging.info('~~ average reward %f', total_reward / game_num)
+                logging.debug('~~ average reward %f', total_reward / game_num)
             logging.debug('out of play loop, queue has %d', len(data))
             # ok we have at least a batch
             batch_tuples = [data.pop() for _ in range(FLAGS.batch_size)]
@@ -355,14 +356,21 @@ def main(_):
                 {inputs_pl_t: states,
                  action_pl: actions,
                  advantage_pl: advantages})
-            print('\r({}): {}'.format(global_step.eval(), loss))
-            # save the model and the summaries
             step = global_step.eval()
+            if step % 50:
+                s = shutil.get_terminal_size((80, 20))
+                print('\r{:¤^{}}'.format(
+                    '({}): {} [{} games, {:.4f} average reward]'.format(
+                        step, loss, game_num,
+                        total_reward/game_num),
+                     s.columns),
+                end='')
+            # save the model and the summaries
             if step % 100 == 0:
                 # no point doing this so often
                 summary_writer.add_summary(summaries, step)
                 saver.save(sess, FLAGS.savepath, global_step=step)
-                logging.debug('saved model and summaries')
+                logging.info('saved model and summaries')
 
 
 if __name__ == '__main__':

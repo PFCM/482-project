@@ -50,19 +50,36 @@ ALGOLS = [
     'mcts-policy-net-tuned'
 ]
 
+PAIRS = itertools.combinations(ALGOLS, 2)
+#PAIRS = [
+    #(ALGOLS[0], ALGOLS[1]),
+    #(ALGOLS[0], ALGOLS[2]),
+    #(ALGOLS[0], ALGOLS[3]),
+    #(ALGOLS[0], ALGOLS[4]),
+    #(ALGOLS[0], ALGOLS[5]),
+    #(ALGOLS[1], ALGOLS[2]),
+    #(ALGOLS[1], ALGOLS[3]),
+    #(ALGOLS[1], ALGOLS[4]),
+    #(ALGOLS[1], ALGOLS[5]),
+    #(ALGOLS[2], ALGOLS[3]),
+    #(ALGOLS[2], ALGOLS[4]),
+    #(ALGOLS[2], ALGOLS[5]),
+    #(ALGOLS[3], ALGOLS[4]),
+#    (ALGOLS[3], ALGOLS[5]),
+#    (ALGOLS[4], ALGOLS[5]),
+#]
+
 # flags we will always need
 common_args = [
     '--exit_result',
     # nb
     '--policy_net_self_path',
     os.path.abspath(
-        '/Users/pfcmathews/Google Drive/Uni/MATH482/project/models/convolutional'
-        '/self/-46400'),
+        'model/self/-46400'),
     '--policy_net_random_path',
     os.path.abspath(
-        '/Users/pfcmathews/Google Drive/Uni/MATH482/project/models/convolutional'
-        '/bootstrap/bootstrap_fixed-16368'),
-    '--tree_depth', '10',  # could experiment
+        'model/random/bootstrap_fixed-16368'),
+    '--tree_depth', '1000000',  # could experiment
     '--search_time', '10',
     '--illegal_move_mode', 'lose',
     '--num_games', '7',
@@ -81,7 +98,7 @@ def round_robin():
                 exist_ok=True)
     points = {player: 0 for player in ALGOLS}
     points['error'] = 0
-    for player1, player2 in itertools.combinations(ALGOLS, 2):
+    for player1, player2 in PAIRS:
         print('  {} vs. {}'.format(player1, player2))
         game_path = os.path.join(
             results_dir, 'round_robin', '{}_v_{}'.format(player1, player2))
