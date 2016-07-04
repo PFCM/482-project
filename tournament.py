@@ -57,13 +57,13 @@ common_args = [
     '--policy_net_self_path',
     os.path.abspath(
         '/Users/pfcmathews/Google Drive/Uni/MATH482/project/models/convolutional'
-        '/self/model-63900'),
+        '/self/-46400'),
     '--policy_net_random_path',
     os.path.abspath(
         '/Users/pfcmathews/Google Drive/Uni/MATH482/project/models/convolutional'
         '/bootstrap/bootstrap_fixed-16368'),
-    '--tree_depth', '1000000',  # could experiment
-    '--search_time', '30',
+    '--tree_depth', '10',  # could experiment
+    '--search_time', '10',
     '--illegal_move_mode', 'lose',
     '--num_games', '7',
     '--no_render'
