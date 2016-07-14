@@ -138,6 +138,11 @@ magnitude slower than the uniform rollouts)
 |*mcts-policy-net-tuned* | 2 |
 
 
+##### one-off games
+
+*policy-net-tuned* vs. *mcts-policy-net-tuned*, 15s search time, unlimited tree depth: 11-0
+
+
 ### Conclusions
 *policy-net-tuned* is clearly the best, it is a little bit disappointing using such a strong policy inside the MCTS
 fails to equal the performance of the policy itself. This implies I was in fact incorrect in my
